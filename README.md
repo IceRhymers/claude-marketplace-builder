@@ -33,6 +33,7 @@ git clone {{REPO_URL}} ~/.claude-skills/{{ORG_SLUG}}
 claude plugin marketplace add ~/.claude-skills/{{ORG_SLUG}}
 claude plugin install {{ORG_SLUG}}-databricks-skills@{{ORG_SLUG}}-marketplace
 claude plugin install {{ORG_SLUG}}-internal-skills@{{ORG_SLUG}}-marketplace
+claude plugin install {{ORG_SLUG}}-marketplace-management@{{ORG_SLUG}}-marketplace
 ```
 
 ## Plugins
@@ -54,6 +55,14 @@ Internal workflow and productivity skills.
 |-------|-------------|------------|
 | `onboarding` | Guide new hires through setup | Auto-activates on onboarding questions |
 | `incident-response` | Production incident triage & response | `/incident-response` |
+
+### marketplace-management
+
+Marketplace self-management skills.
+
+| Skill | Description | Invocation |
+|-------|-------------|------------|
+| `update-skills` | Pull latest changes, re-register marketplace, re-install all plugins | `/update-skills` |
 
 ## Adding a New Skill
 
@@ -93,6 +102,7 @@ See `CLAUDE.md` for detailed instructions.
 plugins/
   databricks-skills/      Databricks workflow skills
   internal-skills/        Internal workflow & productivity skills
+  marketplace-management/ Marketplace self-management skills
 templates/                Scaffolding templates for new skills
 scripts/                  Repo management (init, install, validate)
 docs/                     Documentation
@@ -109,7 +119,7 @@ Inside Claude Code:
 
 Or manually:
 ```bash
-cd ~/.claude-skills/{{ORG_SLUG}} && git pull origin main
+bash ~/.claude-skills/{{ORG_SLUG}}/scripts/install.sh
 ```
 
 ## Documentation
