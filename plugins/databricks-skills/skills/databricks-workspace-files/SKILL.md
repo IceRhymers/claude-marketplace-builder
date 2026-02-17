@@ -1,5 +1,5 @@
 ---
-name: workspace-files
+name: databricks-workspace-files
 description: >
   Explore Databricks workspace files using the Databricks CLI. Use when listing,
   browsing, or pulling files from Databricks workspaces into context for code review,

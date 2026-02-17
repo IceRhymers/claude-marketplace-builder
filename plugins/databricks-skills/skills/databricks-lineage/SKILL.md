@@ -1,5 +1,5 @@
 ---
-name: lineage
+name: databricks-lineage
 description: >
   Explore Databricks Unity Catalog data lineage. Use when tracing data flow between tables,
   understanding how data assets are connected, finding upstream data sources or downstream
