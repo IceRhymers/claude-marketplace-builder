@@ -1,0 +1,33 @@
+{
+  "name": "{{ORG_SLUG}}-marketplace",
+  "owner": {
+    "name": "{{TEAM_NAME}}",
+    "email": "{{TEAM_EMAIL}}"
+  },
+  "metadata": {
+    "description": "{{ORG_NAME}}'s private Claude Code skills marketplace",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "{{ORG_SLUG}}-databricks-skills",
+      "source": "./plugins/databricks-skills",
+      "description": "{{ORG_NAME}}'s Databricks workflow skills for Claude Code",
+      "version": "1.0.0",
+      "author": {
+        "name": "{{TEAM_NAME}}"
+      },
+      "category": "data-engineering"
+    },
+    {
+      "name": "{{ORG_SLUG}}-internal-skills",
+      "source": "./plugins/internal-skills",
+      "description": "{{ORG_NAME}}'s internal workflow and productivity skills for Claude Code",
+      "version": "1.0.0",
+      "author": {
+        "name": "{{TEAM_NAME}}"
+      },
+      "category": "enterprise"
+    }
+  ]
+}

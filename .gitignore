@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+node_modules/
+.initialized
+CLAUDE.local.md
+*.egg-info/
+dist/
+build/
+.env
+.env.local
