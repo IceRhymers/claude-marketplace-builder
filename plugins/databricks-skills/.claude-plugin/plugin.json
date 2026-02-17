@@ -1,0 +1,10 @@
+{
+  "name": "{{ORG_SLUG}}-databricks-skills",
+  "description": "{{ORG_NAME}}'s Databricks workflow skills for Claude Code",
+  "version": "1.0.0",
+  "author": {
+    "name": "{{TEAM_NAME}}"
+  },
+  "skills": "./skills/",
+  "commands": "./commands/"
+}

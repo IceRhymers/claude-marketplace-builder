@@ -1,0 +1,52 @@
+---
+name: {{SKILL_NAME}}
+description: >
+  {{SKILL_DESCRIPTION}}
+user-invocable: true
+allowed-tools: Read, Grep, Glob, Bash
+---
+
+# {{SKILL_TITLE}}
+
+## Overview
+
+<!-- What this skill does and when to use it -->
+
+## Prerequisites
+
+<!-- What must be set up before using this skill -->
+
+## Workflow
+
+### Step 1: Gather Context
+
+<!-- First step of the workflow -->
+
+### Step 2: Execute
+
+<!-- Core execution step. Reference scripts like: -->
+<!-- ```bash -->
+<!-- python scripts/my-script.py <args> -->
+<!-- ``` -->
+
+### Step 3: Validate
+
+<!-- Verify the result -->
+
+## Scripts
+
+<!-- Document the helper scripts in scripts/ -->
+<!-- - `scripts/example.py` — What it does and when to run it -->
+
+## References
+
+<!-- Document the reference files in references/ -->
+<!-- - `references/guide.md` — Detailed guide loaded on demand -->
+
+## Common Patterns
+
+<!-- Typical usage scenarios and examples -->
+
+## Error Handling
+
+<!-- Known failure modes and how to recover -->

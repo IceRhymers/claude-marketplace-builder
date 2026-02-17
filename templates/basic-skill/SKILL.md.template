@@ -1,0 +1,38 @@
+---
+name: {{SKILL_NAME}}
+description: >
+  {{SKILL_DESCRIPTION}}
+user-invocable: true
+---
+
+# {{SKILL_TITLE}}
+
+## Overview
+
+<!-- What this skill does and when to use it -->
+
+## Prerequisites
+
+<!-- What must be set up before using this skill -->
+
+## Workflow
+
+### Step 1: Gather Context
+
+<!-- First step of the workflow -->
+
+### Step 2: Execute
+
+<!-- Core execution step -->
+
+### Step 3: Validate
+
+<!-- Verify the result -->
+
+## Common Patterns
+
+<!-- Typical usage scenarios and examples -->
+
+## Error Handling
+
+<!-- Known failure modes and how to recover -->
