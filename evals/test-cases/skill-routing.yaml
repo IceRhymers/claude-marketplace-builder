@@ -1,0 +1,30 @@
+# Skill routing eval test cases
+# Uses bare skill names — runner does suffix matching across org slug prefixes
+
+tests:
+  # --- databricks-lineage (2) ---
+  - name: lineage-trace-upstream
+    prompt: "Trace the upstream lineage for the table main.sales.orders in Databricks Unity Catalog"
+    expected_skill: databricks-lineage
+
+  - name: lineage-column-dependencies
+    prompt: "What are the column-level dependencies for the revenue column in main.finance.quarterly_report?"
+    expected_skill: databricks-lineage
+
+  # --- databricks-workspace-files (2) ---
+  - name: workspace-list-notebooks
+    prompt: "List all notebooks in the /Repos/team/etl-pipeline directory in our Databricks workspace"
+    expected_skill: databricks-workspace-files
+
+  - name: workspace-pull-file
+    prompt: "Pull the SQL file at /Workspace/Shared/analytics/daily_metrics.sql from Databricks so I can review it"
+    expected_skill: databricks-workspace-files
+
+  # --- lucid-diagram (2) ---
+  - name: diagram-architecture
+    prompt: "Create an lucid chart architecture diagram showing our data pipeline from Kafka through Databricks to a Snowflake data warehouse"
+    expected_skill: lucid-diagram
+
+  - name: diagram-data-flow
+    prompt: "Generate a Graphviz DOT diagram of the data flow between our ingestion layer, bronze, silver, and gold tables"
+    expected_skill: lucid-diagram

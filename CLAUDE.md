@@ -26,6 +26,10 @@ plugins/
     .claude-plugin/plugin.json
     skills/
       lucid-diagram/               Diagram generation (with scripts/ and references/)
+evals/
+  src/skill_evals/                 Python eval runner package (Agent SDK)
+  test-cases/skill-routing.yaml    Skill routing test cases
+  pyproject.toml                   uv + hatchling config
 .claude/
   skills/
     build-skill/SKILL.md           Repo-scoped authoring tool (NOT distributed)

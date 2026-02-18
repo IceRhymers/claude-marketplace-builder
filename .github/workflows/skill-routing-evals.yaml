@@ -1,0 +1,52 @@
+name: Skill Routing Evals
+
+on:
+  pull_request:
+    paths:
+      - "plugins/**/SKILL.md"
+      - "evals/**"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Custom ANTHROPIC_BASE_URL (leave empty for default)"
+        required: false
+        type: string
+      workers:
+        description: "Parallel workers"
+        required: false
+        default: "8"
+        type: string
+      timeout:
+        description: "Per-test timeout in seconds"
+        required: false
+        default: "180"
+        type: string
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install eval dependencies
+        working-directory: evals
+        run: uv sync
+
+      - name: Run skill routing evals
+        working-directory: evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ inputs.base_url || '' }}
+        run: |
+          uv run skill-evals \
+            -j ${{ inputs.workers || '8' }} \
+            --timeout ${{ inputs.timeout || '180' }} \
+            -v

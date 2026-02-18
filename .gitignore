@@ -10,3 +10,4 @@ dist/
 build/
 .env
 .env.local
+evals/.venv/
