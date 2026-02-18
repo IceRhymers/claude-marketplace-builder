@@ -55,7 +55,8 @@ docs/
 4. Rename: `mv plugins/<plugin>/skills/<name>/SKILL.md.template plugins/<plugin>/skills/<name>/SKILL.md`
 5. Edit the SKILL.md — fill in frontmatter and content
 6. Validate: `bash scripts/validate-skill.sh plugins/<plugin>/skills/<name>`
-7. Bump the version in the plugin's `plugin.json` and root `marketplace.json`
+7. **Add at least 1 eval test case** to `evals/test-cases/skill-routing.yaml` (see "Eval Requirements" below)
+8. Bump the version in the plugin's `plugin.json` and root `marketplace.json`
 
 ## Adding a Plugin
 
@@ -89,6 +90,24 @@ claude plugin install {{ORG_SLUG}}-databricks-skills@{{ORG_SLUG}}-marketplace
 claude plugin install {{ORG_SLUG}}-internal-skills@{{ORG_SLUG}}-marketplace
 claude plugin install {{ORG_SLUG}}-marketplace-management@{{ORG_SLUG}}-marketplace
 claude plugin install {{ORG_SLUG}}-specialized-tools@{{ORG_SLUG}}-marketplace
+```
+
+## Eval Requirements
+
+Every skill **must** have at least one test case in `evals/test-cases/skill-routing.yaml`. This verifies that natural language prompts correctly route to the skill. PRs that add or modify skills without a corresponding eval test case should not be merged.
+
+Test case format:
+
+```yaml
+- name: my-skill-descriptive-name
+  prompt: "A natural language prompt that should trigger this skill"
+  expected_skill: my-skill-name
+```
+
+Use `expected_skills` (list, AND logic) or `expected_skill_one_of` (list, OR logic) for multi-skill cases. Run evals locally with:
+
+```bash
+cd evals && uv run skill-evals -v --filter my-skill
 ```
 
 ## Version Bumping

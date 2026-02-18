@@ -158,7 +158,36 @@ Update the version in:
 - `plugins/<plugin>/.claude-plugin/plugin.json`
 - `.claude-plugin/marketplace.json` (the matching plugin entry)
 
-## Phase 4: Test the Skill
+## Phase 4: Add Eval Test Cases
+
+**Every skill must have at least 1 test case** in `evals/test-cases/skill-routing.yaml`. This is required — PRs without eval coverage should not be merged.
+
+### Step 1: Write Test Cases
+
+Add entries to `evals/test-cases/skill-routing.yaml`:
+
+```yaml
+# --- <skill-name> ---
+- name: <skill-name>-<scenario>
+  prompt: "A natural language prompt that should trigger this skill"
+  expected_skill: <skill-name>
+```
+
+Guidelines:
+- Use the skill's `name` from its SKILL.md frontmatter as `expected_skill`
+- Write prompts that a real user would say — not prompts that mention the skill name
+- Add at least 1 test case; 2 is recommended to cover different phrasings
+- Use `expected_skills` (list) for AND logic, `expected_skill_one_of` (list) for OR logic
+
+### Step 2: Run Evals
+
+```bash
+cd evals && uv run skill-evals -v --filter <skill-name>
+```
+
+Verify the test passes before proceeding.
+
+## Phase 5: Test the Skill
 
 Register the marketplace locally and install the plugin:
 
@@ -268,6 +297,8 @@ model: opus                        # opus/sonnet/haiku
 - [ ] Skill scaffolded from template
 - [ ] SKILL.md filled in with validated workflow
 - [ ] `scripts/validate-skill.sh` passes
+- [ ] **At least 1 eval test case added** to `evals/test-cases/skill-routing.yaml`
+- [ ] **Eval passes**: `cd evals && uv run skill-evals -v --filter <skill-name>`
 - [ ] Version bumped in plugin.json and marketplace.json
 - [ ] New files with placeholders added to `scripts/init.sh` `FILES_TO_REPLACE`
 - [ ] Skill tested locally
@@ -286,6 +317,10 @@ model: opus                        # opus/sonnet/haiku
 ### Overly Long SKILL.md
 - **Problem:** Token cost, hard to maintain
 - **Fix:** Keep under 500 lines; use reference files for schemas, examples, helpers
+
+### No Eval Test Case
+- **Problem:** Skill ships without routing verification; may silently break or never trigger
+- **Fix:** Add at least 1 test case to `evals/test-cases/skill-routing.yaml` and verify it passes
 
 ### Missing "When to Use" in Description
 - **Problem:** Skill doesn't trigger for relevant prompts

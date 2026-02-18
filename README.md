@@ -90,12 +90,30 @@ Or manually:
 3. Rename: `mv plugins/<plugin>/skills/my-skill/SKILL.md.template plugins/<plugin>/skills/my-skill/SKILL.md`
 4. Edit the SKILL.md with your content
 5. Validate: `bash scripts/validate-skill.sh plugins/<plugin>/skills/my-skill`
-6. Bump version in the plugin's `plugin.json` and root `marketplace.json`
-7. Open a PR
+6. **Add at least 1 eval test case** to `evals/test-cases/skill-routing.yaml` (see below)
+7. Bump version in the plugin's `plugin.json` and root `marketplace.json`
+8. Open a PR
 
 Two templates are available:
 - **basic-skill** — Knowledge/guidance-only skills with no scripts or references
 - **advanced-skill** — Skills with helper scripts and reference documents
+
+## Eval Requirements
+
+Every skill must have at least one test case in `evals/test-cases/skill-routing.yaml` that verifies natural language prompts route to it correctly. PRs without eval coverage should not be merged.
+
+```yaml
+# Example test case
+- name: my-skill-basic-usage
+  prompt: "A natural language prompt that should trigger this skill"
+  expected_skill: my-skill-name
+```
+
+Run evals locally:
+
+```bash
+cd evals && uv run skill-evals -v --filter my-skill
+```
 
 ## Adding a New Plugin
 
