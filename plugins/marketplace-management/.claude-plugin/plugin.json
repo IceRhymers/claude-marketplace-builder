@@ -1,9 +1,9 @@
 {
-  "name": "{{ORG_SLUG}}-marketplace-management",
-  "description": "{{ORG_NAME}}'s marketplace self-management skills for Claude Code",
+  "name": "icerhymers-marketplace-management",
+  "description": "IceRhymers's marketplace self-management skills for Claude Code",
   "version": "1.0.0",
   "author": {
-    "name": "{{TEAM_NAME}}"
+    "name": "AI engineering"
   },
   "skills": "./skills/"
 }

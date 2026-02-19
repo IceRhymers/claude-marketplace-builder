@@ -5,16 +5,16 @@
 - **git** — [Install git](https://git-scm.com/downloads)
 - **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
 - **jq** — [Install jq](https://jqlang.github.io/jq/download/) (used by the install script to discover plugins)
-- **Repository access** — You must have access to the {{ORG_NAME}} skills repository
+- **Repository access** — You must have access to the IceRhymers skills repository
 
 ## One-Line Install
 
 ```bash
-curl -sSL {{REPO_URL}}/raw/main/scripts/install.sh | bash
+curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/install.sh | bash
 ```
 
 This will:
-1. Clone the repository to `~/.claude-skills/{{ORG_SLUG}}`
+1. Clone the repository to `~/.claude-skills/icerhymers`
 2. Register the marketplace with Claude Code
 3. Install all skill plugins
 
@@ -24,16 +24,16 @@ If you prefer to install manually:
 
 ```bash
 # Clone the repository
-git clone {{REPO_URL}} ~/.claude-skills/{{ORG_SLUG}}
+git clone https://github.com/IceRhymers/claude-marketplace-builder ~/.claude-skills/icerhymers
 
 # Register the marketplace
-claude plugin marketplace add ~/.claude-skills/{{ORG_SLUG}}
+claude plugin marketplace add ~/.claude-skills/icerhymers
 
 # Install plugins
-claude plugin install {{ORG_SLUG}}-databricks-skills@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-internal-skills@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-marketplace-management@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-specialized-tools@{{ORG_SLUG}}-marketplace
+claude plugin install icerhymers-databricks-skills@icerhymers-marketplace
+claude plugin install icerhymers-internal-skills@icerhymers-marketplace
+claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
+claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 ```
 
 ## Verifying Installation
@@ -55,14 +55,14 @@ claude plugin list
 ### Option 2: Manual
 
 ```bash
-cd ~/.claude-skills/{{ORG_SLUG}} && git pull origin main
+cd ~/.claude-skills/icerhymers && git pull origin main
 ```
 
 ## Troubleshooting
 
 ### "Repository not found" or "Permission denied"
 
-Make sure you have access to the {{ORG_NAME}} skills repository. Check with your team admin.
+Make sure you have access to the IceRhymers skills repository. Check with your team admin.
 
 ### "claude: command not found"
 
@@ -78,5 +78,5 @@ npm install -g @anthropic-ai/claude-code
 2. Verify plugins are installed: `claude plugin list`
 3. Try reinstalling:
    ```bash
-   bash ~/.claude-skills/{{ORG_SLUG}}/scripts/install.sh
+   bash ~/.claude-skills/icerhymers/scripts/install.sh
    ```

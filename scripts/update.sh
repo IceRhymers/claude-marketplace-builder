@@ -10,7 +10,7 @@ set -euo pipefail
 # ==============================================================================
 
 main() {
-  local ORG_SLUG="{{ORG_SLUG}}"
+  local ORG_SLUG="icerhymers"
   local INSTALL_DIR="$HOME/.claude-skills/${ORG_SLUG}"
   local MARKETPLACE_JSON="$INSTALL_DIR/.claude-plugin/marketplace.json"
 

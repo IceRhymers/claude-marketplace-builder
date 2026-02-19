@@ -1,6 +1,6 @@
-# {{ORG_NAME}} Claude Code Skills Marketplace
+# IceRhymers Claude Code Skills Marketplace
 
-A private Claude Code skills marketplace for {{ORG_NAME}}. Fork this template, run the init script, and start building skills for your team.
+A private Claude Code skills marketplace for IceRhymers. Fork this template, run the init script, and start building skills for your team.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ A private Claude Code skills marketplace for {{ORG_NAME}}. Fork this template, r
 # 1. Fork this repository to your org
 
 # 2. Clone your fork
-git clone {{REPO_URL}}
+git clone https://github.com/IceRhymers/claude-marketplace-builder
 cd claude-marketplace-builder
 
 # 3. Run the init script to replace placeholders with your org details
@@ -23,18 +23,18 @@ git push origin main
 ### For end users (installing skills)
 
 ```bash
-curl -sSL {{REPO_URL}}/raw/main/scripts/install.sh | bash
+curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/install.sh | bash
 ```
 
 Or install manually:
 
 ```bash
-git clone {{REPO_URL}} ~/.claude-skills/{{ORG_SLUG}}
-claude plugin marketplace add ~/.claude-skills/{{ORG_SLUG}}
-claude plugin install {{ORG_SLUG}}-databricks-skills@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-internal-skills@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-marketplace-management@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-specialized-tools@{{ORG_SLUG}}-marketplace
+git clone https://github.com/IceRhymers/claude-marketplace-builder ~/.claude-skills/icerhymers
+claude plugin marketplace add ~/.claude-skills/icerhymers
+claude plugin install icerhymers-databricks-skills@icerhymers-marketplace
+claude plugin install icerhymers-internal-skills@icerhymers-marketplace
+claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
+claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 ```
 
 ## Plugins
@@ -179,7 +179,7 @@ Inside Claude Code:
 
 Or manually:
 ```bash
-bash ~/.claude-skills/{{ORG_SLUG}}/scripts/install.sh
+bash ~/.claude-skills/icerhymers/scripts/install.sh
 ```
 
 ## Documentation

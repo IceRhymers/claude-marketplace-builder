@@ -1,4 +1,4 @@
-# Contributing to {{ORG_NAME}} Claude Code Skills
+# Contributing to IceRhymers Claude Code Skills
 
 ## How to Propose a New Skill
 
@@ -31,7 +31,7 @@ bash scripts/validate-skill.sh plugins/<plugin>/skills/my-new-skill
 
 ```bash
 claude plugin marketplace add .
-claude plugin install {{ORG_SLUG}}-<plugin>@{{ORG_SLUG}}-marketplace
+claude plugin install icerhymers-<plugin>@icerhymers-marketplace
 ```
 
 Then invoke your skill and verify it works end-to-end.

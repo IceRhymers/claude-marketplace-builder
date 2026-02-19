@@ -1,6 +1,6 @@
 # Claude Code Skills Marketplace
 
-This is {{ORG_NAME}}'s private Claude Code skills marketplace. It contains multiple skill plugins organized by domain.
+This is IceRhymers's private Claude Code skills marketplace. It contains multiple skill plugins organized by domain.
 
 ## Project Structure
 
@@ -86,10 +86,10 @@ allowed-tools: Read, Bash     # optional — tools allowed without confirmation
 
 ```bash
 claude plugin marketplace add .
-claude plugin install {{ORG_SLUG}}-databricks-skills@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-internal-skills@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-marketplace-management@{{ORG_SLUG}}-marketplace
-claude plugin install {{ORG_SLUG}}-specialized-tools@{{ORG_SLUG}}-marketplace
+claude plugin install icerhymers-databricks-skills@icerhymers-marketplace
+claude plugin install icerhymers-internal-skills@icerhymers-marketplace
+claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
+claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 ```
 
 ## Eval Requirements

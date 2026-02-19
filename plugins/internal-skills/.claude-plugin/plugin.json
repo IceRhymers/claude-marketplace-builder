@@ -1,9 +1,9 @@
 {
-  "name": "{{ORG_SLUG}}-internal-skills",
-  "description": "{{ORG_NAME}}'s internal workflow and productivity skills for Claude Code",
+  "name": "icerhymers-internal-skills",
+  "description": "IceRhymers's internal workflow and productivity skills for Claude Code",
   "version": "1.0.0",
   "author": {
-    "name": "{{TEAM_NAME}}"
+    "name": "AI engineering"
   },
   "skills": "./skills/",
   "commands": "./commands/"

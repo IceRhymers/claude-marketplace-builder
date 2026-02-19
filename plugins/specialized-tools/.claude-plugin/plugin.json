@@ -1,9 +1,9 @@
 {
-  "name": "{{ORG_SLUG}}-specialized-tools",
-  "description": "{{ORG_NAME}}'s specialized utility tools for Claude Code",
+  "name": "icerhymers-specialized-tools",
+  "description": "IceRhymers's specialized utility tools for Claude Code",
   "version": "1.0.0",
   "author": {
-    "name": "{{TEAM_NAME}}"
+    "name": "AI engineering"
   },
   "skills": "./skills/",
   "commands": "./commands/"

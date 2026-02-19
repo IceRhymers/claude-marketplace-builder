@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # ==============================================================================
-# install.sh — End-user bootstrap for {{ORG_NAME}} Claude Code Skills
+# install.sh — End-user bootstrap for IceRhymers Claude Code Skills
 #
 # Usage:
-#   curl -sSL {{REPO_URL}}/raw/main/scripts/install.sh | bash
+#   curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/install.sh | bash
 #
 # Or manually:
 #   bash scripts/install.sh
@@ -15,12 +15,12 @@ set -euo pipefail
 # ==============================================================================
 
 main() {
-  local REPO_URL="{{REPO_URL}}"
-  local ORG_SLUG="{{ORG_SLUG}}"
+  local REPO_URL="https://github.com/IceRhymers/claude-marketplace-builder"
+  local ORG_SLUG="icerhymers"
   local INSTALL_DIR="$HOME/.claude-skills/${ORG_SLUG}"
 
   echo "=========================================="
-  echo "  Installing {{ORG_NAME}} Claude Code Skills"
+  echo "  Installing IceRhymers Claude Code Skills"
   echo "=========================================="
   echo ""
 

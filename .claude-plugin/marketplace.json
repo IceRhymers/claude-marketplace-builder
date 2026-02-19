@@ -1,51 +1,51 @@
 {
-  "name": "{{ORG_SLUG}}-marketplace",
+  "name": "icerhymers-marketplace",
   "owner": {
-    "name": "{{TEAM_NAME}}",
-    "email": "{{TEAM_EMAIL}}"
+    "name": "AI engineering",
+    "email": "tanner.wendland@gmail.com"
   },
   "metadata": {
-    "description": "{{ORG_NAME}}'s private Claude Code skills marketplace",
+    "description": "IceRhymers's private Claude Code skills marketplace",
     "version": "1.2.0"
   },
   "plugins": [
     {
-      "name": "{{ORG_SLUG}}-databricks-skills",
+      "name": "icerhymers-databricks-skills",
       "source": "./plugins/databricks-skills",
-      "description": "{{ORG_NAME}}'s Databricks workflow skills for Claude Code",
+      "description": "IceRhymers's Databricks workflow skills for Claude Code",
       "version": "1.0.0",
       "author": {
-        "name": "{{TEAM_NAME}}"
+        "name": "AI engineering"
       },
       "category": "data-engineering"
     },
     {
-      "name": "{{ORG_SLUG}}-internal-skills",
+      "name": "icerhymers-internal-skills",
       "source": "./plugins/internal-skills",
-      "description": "{{ORG_NAME}}'s internal workflow and productivity skills for Claude Code",
+      "description": "IceRhymers's internal workflow and productivity skills for Claude Code",
       "version": "1.0.0",
       "author": {
-        "name": "{{TEAM_NAME}}"
+        "name": "AI engineering"
       },
       "category": "enterprise"
     },
     {
-      "name": "{{ORG_SLUG}}-marketplace-management",
+      "name": "icerhymers-marketplace-management",
       "source": "./plugins/marketplace-management",
-      "description": "{{ORG_NAME}}'s marketplace self-management skills for Claude Code",
+      "description": "IceRhymers's marketplace self-management skills for Claude Code",
       "version": "1.0.0",
       "author": {
-        "name": "{{TEAM_NAME}}"
+        "name": "AI engineering"
       },
       "category": "marketplace"
     },
     {
-      "name": "{{ORG_SLUG}}-specialized-tools",
+      "name": "icerhymers-specialized-tools",
       "source": "./plugins/specialized-tools",
-      "description": "{{ORG_NAME}}'s specialized utility tools for Claude Code",
+      "description": "IceRhymers's specialized utility tools for Claude Code",
       "version": "1.0.0",
       "author": {
-        "name": "{{TEAM_NAME}}"
+        "name": "AI engineering"
       },
       "category": "utilities"
     }
