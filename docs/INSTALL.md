@@ -4,10 +4,52 @@
 
 - **git** — [Install git](https://git-scm.com/downloads)
 - **Claude Code CLI** — `npm install -g @anthropic-ai/claude-code`
-- **jq** — [Install jq](https://jqlang.github.io/jq/download/) (used by the install script to discover plugins)
+- **jq** — [Install jq](https://jqlang.github.io/jq/download/) (used by setup scripts)
 - **Repository access** — You must have access to the IceRhymers skills repository
 
-## One-Line Install
+## Step 1: Set Up Inference
+
+> **Already have Claude Code working?** If you can run `claude` and get responses (e.g., you're on Claude Max or already configured a backend), skip to [Step 2](#step-2-install-the-marketplace).
+
+Claude Code needs an inference backend before it can do anything. Run the interactive setup:
+
+```bash
+curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-inference.sh | bash
+```
+
+This walks you through connecting Claude Code to one of:
+
+| Backend | Best for |
+|---------|----------|
+| **Databricks AI Gateway** | Teams using Databricks (auto-detects CLI profiles) |
+| **Claude Max** | Individual subscribers — zero config needed |
+| **Anthropic Direct API** | Direct API key access |
+| **AWS Bedrock** | AWS-native deployments |
+| **Google Vertex AI** | GCP-native deployments |
+| **Custom endpoint** | Proxies, self-hosted, or other setups |
+
+The script writes to `~/.claude/settings.json` so Claude Code picks up the backend automatically — no shell sourcing needed. Re-run at any time to change backends.
+
+### Manual inference setup
+
+If you prefer not to use the interactive script, set env vars directly in your shell profile. Example for Databricks:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export ANTHROPIC_BASE_URL="https://your-workspace.cloud.databricks.com/serving-endpoints/anthropic"
+export ANTHROPIC_AUTH_TOKEN="your-databricks-pat"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="databricks-claude-opus-4-6"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="databricks-claude-sonnet-4-5"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="databricks-claude-haiku-4-5"
+export ANTHROPIC_CUSTOM_HEADERS="x-databricks-use-coding-agent-mode: true"
+export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="1"
+```
+
+For other backends, see the profile templates in `config/profiles/`.
+
+## Step 2: Install the Marketplace
+
+### One-line install
 
 ```bash
 curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/install.sh | bash
@@ -18,9 +60,7 @@ This will:
 2. Register the marketplace with Claude Code
 3. Install all skill plugins
 
-## Manual Install
-
-If you prefer to install manually:
+### Manual install
 
 ```bash
 # Clone the repository
@@ -36,42 +76,11 @@ claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
 claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 ```
 
-## Inference Configuration
+### For marketplace developers
 
-After installation, configure which inference backend Claude Code should use.
-
-### Quick setup (no repo clone needed)
-
-```bash
-curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-inference.sh | bash
-```
-
-### For marketplace developers (working in this repo)
-
-```bash
-make configure
-```
-
-Both write to `~/.claude/settings.json` so Claude Code picks up the backend automatically — run once, done. When run from within the repo, `make configure` also generates `config/inference.env` for Makefile targets (evals, etc.). The Makefile auto-sources this file when it exists.
-
-### Manual setup
-
-If you prefer not to use the interactive script, set the env vars directly in your shell profile. The most common setup for Databricks:
-
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-export ANTHROPIC_BASE_URL="https://your-workspace.cloud.databricks.com/serving-endpoints/anthropic"
-export ANTHROPIC_AUTH_TOKEN="your-databricks-pat"
-export ANTHROPIC_DEFAULT_OPUS_MODEL="databricks-claude-opus-4-6"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="databricks-claude-sonnet-4-5"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="databricks-claude-haiku-4-5"
-```
-
-For other backends, see the profile templates in `config/profiles/` for the required environment variables.
+If you're working in this repo, use `make configure` instead of the curl command for inference setup — it also generates `config/inference.env` for Makefile targets (evals, etc.).
 
 ## Verifying Installation
-
-After installation, check installed plugins:
 
 ```bash
 claude plugin list

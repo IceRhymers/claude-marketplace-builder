@@ -41,10 +41,17 @@ main() {
   local choice
   choice=$(select_menu "  Select a backend:" \
     "Databricks AI Gateway  (recommended)" \
-    "Anthropic Direct" \
+    "Claude Max  (no configuration needed)" \
+    "Anthropic Direct API" \
     "AWS Bedrock" \
     "Google Vertex AI" \
     "Custom endpoint")
+
+  # Claude Max needs no env vars — skip straight to confirmation
+  if [ "$choice" -eq 1 ]; then
+    configure_claude_max
+    return
+  fi
 
   # Temp file to collect KEY=VALUE pairs
   local env_file
@@ -54,10 +61,10 @@ main() {
   local profile_name
   case "$choice" in
     0) profile_name="databricks";  configure_databricks "$env_file" ;;
-    1) profile_name="anthropic";   configure_anthropic "$env_file" ;;
-    2) profile_name="bedrock";     configure_bedrock "$env_file" ;;
-    3) profile_name="vertex";      configure_vertex "$env_file" ;;
-    4) profile_name="custom";      configure_custom "$env_file" ;;
+    2) profile_name="anthropic";   configure_anthropic "$env_file" ;;
+    3) profile_name="bedrock";     configure_bedrock "$env_file" ;;
+    4) profile_name="vertex";      configure_vertex "$env_file" ;;
+    5) profile_name="custom";      configure_custom "$env_file" ;;
   esac
 
   # -------------------------------------------------------------------------
@@ -520,6 +527,21 @@ configure_custom() {
       echo "ANTHROPIC_AUTH_TOKEN=${auth_token}"
     fi
   } > "$env_file"
+}
+
+configure_claude_max() {
+  clear_screen
+  echo "  Claude Max"
+  echo "  =========================================="
+  echo ""
+  echo "  Claude Max includes inference — no additional configuration needed."
+  echo ""
+  echo "  Just make sure you're signed in:"
+  echo "    1. Run 'claude' in your terminal"
+  echo "    2. Sign in with your Anthropic account when prompted"
+  echo ""
+  echo "  That's it! Claude Code will use your Max subscription automatically."
+  echo ""
 }
 
 # ---------------------------------------------------------------------------
