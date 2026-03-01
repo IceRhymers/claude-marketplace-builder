@@ -31,26 +31,20 @@ main() {
   # Banner & menu
   # -------------------------------------------------------------------------
 
-  echo "=========================================="
+  clear_screen
   echo "  Claude Code Inference Configuration"
-  echo "=========================================="
+  echo "  =========================================="
   echo ""
-  echo "  Select which backend Claude Code should use for inference."
+  echo "  This configures ~/.claude/settings.json so Claude Code"
+  echo "  picks up the backend automatically — no shell sourcing needed."
   echo ""
-  echo "  This configures ~/.claude/settings.json so Claude Code picks"
-  echo "  up the backend automatically — no shell sourcing needed."
-  echo ""
-  echo "  Backends:"
-  echo "    1) Databricks AI Gateway  (recommended)"
-  echo "    2) Anthropic Direct"
-  echo "    3) AWS Bedrock"
-  echo "    4) Google Vertex AI"
-  echo "    5) Custom endpoint"
-  echo ""
-
   local choice
-  read -p "  Choose a backend [1-5] (default: 1): " choice </dev/tty
-  choice="${choice:-1}"
+  choice=$(select_menu "  Select a backend:" \
+    "Databricks AI Gateway  (recommended)" \
+    "Anthropic Direct" \
+    "AWS Bedrock" \
+    "Google Vertex AI" \
+    "Custom endpoint")
 
   # Temp file to collect KEY=VALUE pairs
   local env_file
@@ -59,15 +53,11 @@ main() {
 
   local profile_name
   case "$choice" in
-    1) profile_name="databricks";  configure_databricks "$env_file" ;;
-    2) profile_name="anthropic";   configure_anthropic "$env_file" ;;
-    3) profile_name="bedrock";     configure_bedrock "$env_file" ;;
-    4) profile_name="vertex";      configure_vertex "$env_file" ;;
-    5) profile_name="custom";      configure_custom "$env_file" ;;
-    *)
-      echo "  Invalid choice: $choice"
-      exit 1
-      ;;
+    0) profile_name="databricks";  configure_databricks "$env_file" ;;
+    1) profile_name="anthropic";   configure_anthropic "$env_file" ;;
+    2) profile_name="bedrock";     configure_bedrock "$env_file" ;;
+    3) profile_name="vertex";      configure_vertex "$env_file" ;;
+    4) profile_name="custom";      configure_custom "$env_file" ;;
   esac
 
   # -------------------------------------------------------------------------
@@ -86,10 +76,9 @@ main() {
   # Done
   # -------------------------------------------------------------------------
 
-  echo ""
-  echo "=========================================="
+  clear_screen
   echo "  Configuration Complete!"
-  echo "=========================================="
+  echo "  =========================================="
   echo ""
   echo "  Your inference backend is now configured."
   echo ""
@@ -119,6 +108,18 @@ check_prerequisites() {
     echo ""
     echo "Please install the missing prerequisites and re-run this script."
     exit 1
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# clear_screen — Clear terminal for a fresh "page"
+# ---------------------------------------------------------------------------
+
+clear_screen() {
+  if command -v tput &>/dev/null; then
+    tput clear >/dev/tty 2>/dev/null || printf '\033[2J\033[H' >/dev/tty
+  else
+    printf '\033[2J\033[H' >/dev/tty
   fi
 }
 
@@ -156,37 +157,246 @@ prompt_secret() {
 }
 
 # ---------------------------------------------------------------------------
+# select_menu — Arrow-key navigable terminal menu
+#
+# Usage:  choice=$(select_menu "Header" "Option A" "Option B" "Option C")
+# Returns 0-based index of the selected option on stdout.
+# All visual output goes to /dev/tty so it works in curl-pipe-bash.
+# Falls back to numbered read -p input when tput is unavailable.
+# ---------------------------------------------------------------------------
+
+select_menu() {
+  local header="$1"; shift
+  local -a options=("$@")
+  local count=${#options[@]}
+
+  # Fallback: numbered input when tput is unavailable
+  if ! command -v tput &>/dev/null; then
+    echo "$header" >/dev/tty
+    local i
+    for i in "${!options[@]}"; do
+      echo "    $((i + 1))) ${options[$i]}" >/dev/tty
+    done
+    echo "" >/dev/tty
+    local num
+    read -p "  Choose [1-${count}] (default: 1): " num </dev/tty
+    num="${num:-1}"
+    echo $(( num - 1 ))
+    return
+  fi
+
+  # Use a persistent file descriptor for /dev/tty so all escape sequences
+  # and content go through the same fd in guaranteed order.
+  exec 3>/dev/tty
+
+  trap 'printf "\033[?25h\033[0m" >&3; exec 3>&-; return 130' INT TERM
+
+  local selected=0
+  local prev_selected=-1
+  local key seq
+
+  # Hide cursor
+  printf '\033[?25l' >&3
+
+  # Print header (fixed, never redrawn)
+  printf '%s\n' "$header" >&3
+
+  # Reserve screen space: print blank lines for the full menu height so any
+  # terminal scrolling happens NOW, before we start cursor movement.
+  local menu_lines=$(( count + 2 ))   # options + blank + footer
+  local j
+  for (( j = 0; j < menu_lines; j++ )); do
+    printf '\n' >&3
+  done
+  # Move cursor back up to the start of the options area.
+  # These lines are guaranteed to be on-screen since we just printed them.
+  printf '\033[%dA' "$menu_lines" >&3
+
+  # Main loop — cursor is always parked at the start of the options area
+  while true; do
+    if [ "$selected" -ne "$prev_selected" ]; then
+      # Draw menu from current position
+      local i
+      for i in "${!options[@]}"; do
+        if [ "$i" -eq "$selected" ]; then
+          printf '\033[2K\033[7m  > %s\033[0m\n' "${options[$i]}" >&3
+        else
+          printf '\033[2K    %s\n' "${options[$i]}" >&3
+        fi
+      done
+      printf '\033[2K\n' >&3
+      printf '\033[2K  Use arrow keys, Enter to select' >&3
+
+      # Move cursor back to the start of the options area.
+      # Cursor is at end of footer (count+1 rows below row 0).
+      printf '\r\033[%dA' "$(( count + 1 ))" >&3
+
+      prev_selected=$selected
+    fi
+
+    IFS= read -rsn1 key </dev/tty
+
+    if [[ "$key" == "" ]]; then
+      # Enter pressed — confirm selection
+      break
+    elif [[ "$key" == $'\e' ]]; then
+      # Read remaining escape sequence bytes.
+      # Use -t 1 (not fractional) for bash 3.2 compatibility on macOS.
+      IFS= read -rsn2 -t 1 seq </dev/tty || true
+      case "$seq" in
+        '[A') selected=$(( (selected - 1 + count) % count )) ;;
+        '[B') selected=$(( (selected + 1) % count )) ;;
+      esac
+    fi
+  done
+
+  # Move cursor below the menu, show cursor, reset attributes
+  printf '\033[%dB\r\n' "$(( count + 1 ))" >&3
+  printf '\033[?25h\033[0m' >&3
+
+  exec 3>&-
+  trap - INT TERM
+
+  echo "$selected"
+}
+
+# ---------------------------------------------------------------------------
+# detect_databricks_profiles — Detect valid Databricks CLI profiles
+#
+# Prints a JSON array of valid profiles to stdout.
+# Returns 0 if databricks CLI is found, 1 if not.
+# ---------------------------------------------------------------------------
+
+detect_databricks_profiles() {
+  if ! command -v databricks &>/dev/null; then
+    echo "[]"
+    return 1
+  fi
+
+  local raw_profiles
+  raw_profiles=$(databricks auth profiles --output json 2>/dev/null) || {
+    echo "[]"
+    return 0
+  }
+
+  # Filter to valid profiles, extract name + host + auth_type
+  local filtered
+  filtered=$(echo "$raw_profiles" | jq -c '
+    [.profiles // [] | .[] | select(.valid == true) | {name, host, auth_type}]
+  ' 2>/dev/null) || {
+    echo "[]"
+    return 0
+  }
+
+  echo "$filtered"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Profile configurators — each writes KEY=VALUE lines to the env file
 # ---------------------------------------------------------------------------
 
 configure_databricks() {
   local env_file="$1"
 
-  echo ""
-  echo "  Databricks AI Gateway Configuration"
-  echo "  ------------------------------------"
+  clear_screen
+  echo "  Databricks AI Gateway"
+  echo "  =========================================="
   echo ""
   echo "  The endpoint path /serving-endpoints/anthropic is fixed."
-  echo "  You only need to provide your Databricks workspace URL."
   echo ""
 
-  local workspace_url
-  workspace_url=$(prompt_value "Databricks workspace URL (e.g., https://my-workspace.cloud.databricks.com)" "")
+  local use_manual=true
+  local workspace_url=""
+  local auth_token=""
 
-  if [ -z "$workspace_url" ]; then
-    echo "  ERROR: Workspace URL is required."
-    exit 1
+  # Try to detect Databricks CLI profiles
+  local profiles_json cli_found
+  profiles_json=$(detect_databricks_profiles) && cli_found=0 || cli_found=$?
+
+  local profile_count
+  profile_count=$(echo "$profiles_json" | jq 'length' 2>/dev/null) || profile_count=0
+
+  if [ "$cli_found" -eq 0 ] && [ "$profile_count" -gt 0 ]; then
+    # Build menu options from profiles
+    local -a menu_options=()
+    local -a profile_names=()
+    local -a profile_hosts=()
+    local i
+
+    for i in $(seq 0 $(( profile_count - 1 ))); do
+      local pname phost
+      pname=$(echo "$profiles_json" | jq -r ".[$i].name")
+      phost=$(echo "$profiles_json" | jq -r ".[$i].host")
+      profile_names+=("$pname")
+      profile_hosts+=("$phost")
+      menu_options+=("${pname}  (${phost})")
+    done
+    menu_options+=("Enter manually")
+
+    local profile_choice
+    profile_choice=$(select_menu "  Select a Databricks profile:" "${menu_options[@]}")
+
+    if [ "$profile_choice" -lt "$profile_count" ]; then
+      # User selected a CLI profile
+      local selected_name="${profile_names[$profile_choice]}"
+      local selected_host="${profile_hosts[$profile_choice]}"
+
+      # Strip trailing slash from host
+      selected_host="${selected_host%/}"
+      workspace_url="$selected_host"
+
+      echo "  Using profile: $selected_name"
+      echo "  Host: $selected_host"
+
+      # Try to get auth token from the CLI
+      local env_json
+      env_json=$(databricks auth env --profile "$selected_name" --output json 2>/dev/null) || env_json=""
+
+      if [ -n "$env_json" ]; then
+        auth_token=$(echo "$env_json" | jq -r '.env.DATABRICKS_TOKEN // empty' 2>/dev/null) || auth_token=""
+      fi
+
+      if [ -z "$auth_token" ]; then
+        echo ""
+        echo "  WARNING: Could not retrieve token for profile '$selected_name'."
+        echo "  The token may be expired. Try: databricks auth login --profile $selected_name"
+        echo ""
+        auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
+      fi
+
+      use_manual=false
+    fi
+  elif [ "$cli_found" -ne 0 ]; then
+    echo "  Databricks CLI not found — entering configuration manually."
+    echo ""
+  else
+    echo "  No valid Databricks CLI profiles found."
+    echo "  Tip: run 'databricks auth login' to set up a profile."
+    echo ""
   fi
 
-  # Strip trailing slash
-  workspace_url="${workspace_url%/}"
+  # Manual flow
+  if [ "$use_manual" = true ]; then
+    echo "  You only need to provide your Databricks workspace URL."
+    echo ""
+
+    workspace_url=$(prompt_value "Databricks workspace URL (e.g., https://my-workspace.cloud.databricks.com)" "")
+
+    if [ -z "$workspace_url" ]; then
+      echo "  ERROR: Workspace URL is required."
+      exit 1
+    fi
+
+    # Strip trailing slash
+    workspace_url="${workspace_url%/}"
+
+    auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
+  fi
 
   local base_url="${workspace_url}/serving-endpoints/anthropic"
   echo ""
   echo "  ANTHROPIC_BASE_URL: $base_url"
-
-  local auth_token
-  auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
 
   {
     echo "ANTHROPIC_BASE_URL=${base_url}"
@@ -196,15 +406,17 @@ configure_databricks() {
     echo "ANTHROPIC_DEFAULT_OPUS_MODEL=databricks-claude-opus-4-6"
     echo "ANTHROPIC_DEFAULT_SONNET_MODEL=databricks-claude-sonnet-4-5"
     echo "ANTHROPIC_DEFAULT_HAIKU_MODEL=databricks-claude-haiku-4-5"
+    echo "ANTHROPIC_CUSTOM_HEADERS=x-databricks-use-coding-agent-mode: true"
+    echo "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1"
   } > "$env_file"
 }
 
 configure_anthropic() {
   local env_file="$1"
 
-  echo ""
-  echo "  Anthropic Direct Configuration"
-  echo "  -------------------------------"
+  clear_screen
+  echo "  Anthropic Direct"
+  echo "  =========================================="
   echo ""
 
   local api_key
@@ -219,24 +431,19 @@ configure_anthropic() {
 configure_bedrock() {
   local env_file="$1"
 
-  echo ""
-  echo "  AWS Bedrock Configuration"
-  echo "  --------------------------"
+  clear_screen
+  echo "  AWS Bedrock"
+  echo "  =========================================="
   echo ""
 
   local aws_region
   aws_region=$(prompt_value "AWS region (e.g., us-east-1)" "us-east-1")
 
-  echo ""
-  echo "  Authentication method:"
-  echo "    1) AWS access key + secret key"
-  echo "    2) AWS CLI profile name"
-  echo "    3) Skip (use instance role, SSO, or env vars)"
-  echo ""
-
   local auth_choice
-  read -p "  Choose [1-3] (default: 3): " auth_choice </dev/tty
-  auth_choice="${auth_choice:-3}"
+  auth_choice=$(select_menu "  Authentication method:" \
+    "AWS access key + secret key" \
+    "AWS CLI profile name" \
+    "Skip (use instance role, SSO, or env vars)")
 
   {
     echo "CLAUDE_CODE_USE_BEDROCK=1"
@@ -244,14 +451,14 @@ configure_bedrock() {
   } > "$env_file"
 
   case "$auth_choice" in
-    1)
+    0)
       local aws_access_key aws_secret_key
       aws_access_key=$(prompt_secret "AWS Access Key ID")
       aws_secret_key=$(prompt_secret "AWS Secret Access Key")
       [ -n "$aws_access_key" ] && echo "AWS_ACCESS_KEY_ID=${aws_access_key}" >> "$env_file"
       [ -n "$aws_secret_key" ] && echo "AWS_SECRET_ACCESS_KEY=${aws_secret_key}" >> "$env_file"
       ;;
-    2)
+    1)
       local aws_profile
       aws_profile=$(prompt_value "AWS profile name" "default")
       echo "AWS_PROFILE=${aws_profile}" >> "$env_file"
@@ -262,9 +469,9 @@ configure_bedrock() {
 configure_vertex() {
   local env_file="$1"
 
-  echo ""
-  echo "  Google Vertex AI Configuration"
-  echo "  --------------------------------"
+  clear_screen
+  echo "  Google Vertex AI"
+  echo "  =========================================="
   echo ""
 
   local gcp_project
@@ -291,9 +498,9 @@ configure_vertex() {
 configure_custom() {
   local env_file="$1"
 
-  echo ""
-  echo "  Custom Endpoint Configuration"
-  echo "  -------------------------------"
+  clear_screen
+  echo "  Custom Endpoint"
+  echo "  =========================================="
   echo ""
 
   local base_url
