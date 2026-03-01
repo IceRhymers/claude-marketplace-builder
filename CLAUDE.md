@@ -67,6 +67,7 @@ To add a new plugin group (e.g., `plugins/security-skills/`):
 3. Add an entry to `.claude-plugin/marketplace.json` in the `plugins` array
 4. Add the plugin's `plugin.json` path to the `FILES_TO_REPLACE` array in `scripts/init.sh`
 5. Add skills under `plugins/security-skills/skills/`
+6. Update the `PLUGINS` list in the `Makefile`
 
 ## Skill Frontmatter
 
@@ -115,3 +116,7 @@ cd evals && uv run skill-evals -v --filter my-skill
 When skills change, bump the `version` field in:
 - The plugin's `.claude-plugin/plugin.json`
 - The root `.claude-plugin/marketplace.json` (matching plugin entry)
+
+## Makefile
+
+Common tasks are exposed via `make` targets (run `make help` to list them). When adding a new repeatable task (script, eval command, etc.), add a corresponding Makefile target with a `## Description` comment above it so it appears in `make help`. If adding a new plugin, update the `PLUGINS` list in the Makefile.
