@@ -36,6 +36,39 @@ claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
 claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 ```
 
+## Inference Configuration
+
+After installation, configure which inference backend Claude Code should use.
+
+### Quick setup (no repo clone needed)
+
+```bash
+curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-inference.sh | bash
+```
+
+### For marketplace developers (working in this repo)
+
+```bash
+make configure
+```
+
+Both write to `~/.claude/settings.json` so Claude Code picks up the backend automatically — run once, done. When run from within the repo, `make configure` also generates `config/inference.env` for Makefile targets (evals, etc.). The Makefile auto-sources this file when it exists.
+
+### Manual setup
+
+If you prefer not to use the interactive script, set the env vars directly in your shell profile. The most common setup for Databricks:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export ANTHROPIC_BASE_URL="https://your-workspace.cloud.databricks.com/serving-endpoints/anthropic"
+export ANTHROPIC_AUTH_TOKEN="your-databricks-pat"
+export ANTHROPIC_DEFAULT_OPUS_MODEL="databricks-claude-opus-4-6"
+export ANTHROPIC_DEFAULT_SONNET_MODEL="databricks-claude-sonnet-4-5"
+export ANTHROPIC_DEFAULT_HAIKU_MODEL="databricks-claude-haiku-4-5"
+```
+
+For other backends, see the profile templates in `config/profiles/` for the required environment variables.
+
 ## Verifying Installation
 
 After installation, check installed plugins:

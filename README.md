@@ -37,6 +37,52 @@ claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
 claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 ```
 
+## Inference Configuration
+
+Claude Code needs to know which inference backend to use. This marketplace defaults to **Databricks AI Gateway**, but also supports Anthropic direct, AWS Bedrock, Google Vertex AI, and custom endpoints.
+
+### Quick setup
+
+No repo clone needed:
+
+```bash
+curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-inference.sh | bash
+```
+
+Or from within the repo:
+
+```bash
+make configure
+```
+
+This writes to `~/.claude/settings.json` so Claude Code picks up the backend automatically — run once, configured everywhere. If run from within the repo, it also generates `config/inference.env` for Makefile targets.
+
+### Available backends
+
+| Backend | Env vars set | Notes |
+|---------|-------------|-------|
+| **Databricks AI Gateway** (default) | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, model pinning | Prompts for workspace URL only — endpoint path is fixed |
+| Anthropic Direct | `ANTHROPIC_API_KEY` | Simplest setup — uses the Anthropic API directly |
+| AWS Bedrock | `CLAUDE_CODE_USE_BEDROCK`, `AWS_REGION`, AWS creds | Requires Bedrock access in your AWS account |
+| Google Vertex AI | `CLAUDE_CODE_USE_VERTEX`, `CLOUD_ML_PROJECT_ID`, `CLOUD_ML_REGION` | Requires Vertex AI + gcloud auth |
+| Custom endpoint | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` | Any Anthropic-compatible proxy |
+
+### How it works
+
+- `scripts/configure-inference.sh` merges an `env` block into `~/.claude/settings.json`
+- Claude Code reads `~/.claude/settings.json` on startup — no shell sourcing needed
+- When run from inside the repo, it also writes `config/inference.env` for Makefile targets
+- The Makefile auto-sources `config/inference.env` when it exists, exporting variables to all child processes
+- Profile templates under `config/profiles/` document which env vars each backend needs
+
+### Manual setup
+
+If you prefer not to use the interactive script:
+
+1. Copy a profile template: `cp config/profiles/databricks.env.template config/inference.env`
+2. Replace the `{{PLACEHOLDER}}` values with your actual values
+3. Or set the env vars directly in your shell profile (`~/.bashrc`, `~/.zshrc`)
+
 ## Plugins
 
 ### databricks-skills
@@ -157,11 +203,20 @@ plugins/
 templates/
   basic-skill/                     Simple skill template (no scripts)
   advanced-skill/                  Full skill template (scripts + references)
+config/
+  profiles/                        Inference backend profile templates
+    databricks.env.template        Databricks AI Gateway (default)
+    anthropic.env.template         Anthropic direct API
+    bedrock.env.template           AWS Bedrock
+    vertex.env.template            Google Vertex AI
+    custom.env.template            Custom endpoint
+  inference.env                    Generated config (gitignored)
 scripts/
   init.sh                          One-time setup — replaces {{placeholders}}
   install.sh                       End-user install and update
   update.sh                        Safe update from within Claude Code
   validate-skill.sh                Validates skill structure and frontmatter
+  configure-inference.sh           Configure inference backend interactively
 docs/
   INSTALL.md                       Installation guide
   SKILL-AUTHORING.md               Skill authoring guide

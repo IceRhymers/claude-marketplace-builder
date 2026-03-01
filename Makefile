@@ -21,6 +21,13 @@ TIMEOUT   ?= 180       ## Per-test timeout in seconds (default: 180)
 THRESHOLD ?= 95        ## Minimum pass percentage (default: 95)
 RETRIES   ?= 5         ## Max retries on rate limit (default: 5)
 
+# Auto-source inference config if it exists
+INFERENCE_ENV := config/inference.env
+ifneq (,$(wildcard $(INFERENCE_ENV)))
+include $(INFERENCE_ENV)
+export
+endif
+
 .DEFAULT_GOAL := help
 
 # ------------------------------------------------------------------------------
@@ -78,4 +85,8 @@ uninstall-local:
 init:
 	bash scripts/init.sh
 
-.PHONY: help validate evals evals-install install-local uninstall-local init
+## Configure inference backend (Databricks, Anthropic, Bedrock, Vertex, custom)
+configure:
+	bash scripts/configure-inference.sh
+
+.PHONY: help validate evals evals-install install-local uninstall-local init configure
