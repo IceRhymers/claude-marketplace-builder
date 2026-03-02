@@ -12,3 +12,4 @@ build/
 .env.local
 config/inference.env
 evals/.venv/
+.coverage
