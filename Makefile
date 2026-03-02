@@ -20,6 +20,9 @@ WORKERS   ?= 8         ## Parallel eval workers (default: 8)
 TIMEOUT   ?= 180       ## Per-test timeout in seconds (default: 180)
 THRESHOLD ?= 95        ## Minimum pass percentage (default: 95)
 RETRIES   ?= 5         ## Max retries on rate limit (default: 5)
+DEF       ?=           ## YAML definition path for uc-mcp commands
+CONN      ?=           ## UC connection name for uc-mcp-introspect
+CMD       ?=           ## MCP server command for uc-mcp-introspect
 
 # Auto-source inference config if it exists
 INFERENCE_ENV := config/inference.env
@@ -89,4 +92,47 @@ init:
 configure:
 	bash scripts/configure-inference.sh
 
-.PHONY: help validate evals evals-install install-local uninstall-local init configure
+# ------------------------------------------------------------------------------
+# UC MCP Server targets
+# ------------------------------------------------------------------------------
+
+## Install uc-mcp-server Python dependencies
+uc-mcp-install:
+	cd uc-mcp-server && uv sync
+
+## Run uc-mcp-server tests (supports FILTER=)
+uc-mcp-test:
+	cd uc-mcp-server && uv run pytest -v $(if $(FILTER),-k $(FILTER))
+
+## Run uc-mcp-server tests with coverage
+uc-mcp-coverage:
+	cd uc-mcp-server && uv run pytest --cov=uc_mcp --cov-report=term-missing -v $(if $(FILTER),-k $(FILTER))
+
+## Validate a YAML definition (DEF=path)
+uc-mcp-validate:
+ifeq ($(DEF),)
+	@echo "Usage: make uc-mcp-validate DEF=uc-mcp-server/definitions/slack.yaml" >&2 && exit 1
+else
+	cd uc-mcp-server && uv run uc-mcp validate $(DEF)
+endif
+
+## Build .pex executable (DEF=path)
+uc-mcp-build:
+ifeq ($(DEF),)
+	@echo "Usage: make uc-mcp-build DEF=uc-mcp-server/definitions/slack.yaml" >&2 && exit 1
+else
+	cd uc-mcp-server && bash build/build.sh $(DEF)
+endif
+
+## Introspect MCP server (CMD=, CONN=)
+uc-mcp-introspect:
+ifeq ($(CMD),)
+	@echo "Usage: make uc-mcp-introspect CMD='npx server' CONN=my_conn" >&2 && exit 1
+else ifeq ($(CONN),)
+	@echo "Usage: make uc-mcp-introspect CMD='npx server' CONN=my_conn" >&2 && exit 1
+else
+	cd uc-mcp-server && uv run uc-mcp introspect "$(CMD)" --connection $(CONN)
+endif
+
+.PHONY: help validate evals evals-install install-local uninstall-local init configure \
+	uc-mcp-install uc-mcp-test uc-mcp-coverage uc-mcp-validate uc-mcp-build uc-mcp-introspect

@@ -1,0 +1,76 @@
+"""UC Connection proxy for HTTP via Databricks connections."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from typing import Any, Optional
+from urllib.parse import urlencode
+
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.serving import ExternalFunctionRequestHttpMethod
+
+_METHOD_MAP: dict[str, ExternalFunctionRequestHttpMethod] = {
+    "GET": ExternalFunctionRequestHttpMethod.GET,
+    "POST": ExternalFunctionRequestHttpMethod.POST,
+    "PUT": ExternalFunctionRequestHttpMethod.PUT,
+    "PATCH": ExternalFunctionRequestHttpMethod.PATCH,
+    "DELETE": ExternalFunctionRequestHttpMethod.DELETE,
+}
+
+
+@dataclass
+class UCResponse:
+    """Response from a UC connection HTTP request."""
+
+    status_code: int
+    body: dict[str, Any] | str
+    headers: dict[str, str]
+    raw_contents: str
+
+
+class UCConnection:
+    """Proxies HTTP requests through a Databricks UC connection."""
+
+    def __init__(self, connection_name: str, client: Optional[WorkspaceClient] = None):
+        self._connection_name = connection_name
+        self._client = client if client is not None else WorkspaceClient()
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body: Optional[dict[str, Any]] = None,
+        headers: Optional[dict[str, str]] = None,
+        query_params: Optional[dict[str, str]] = None,
+    ) -> UCResponse:
+        """Execute an HTTP request through the UC connection."""
+        if query_params:
+            separator = "&" if "?" in path else "?"
+            path = f"{path}{separator}{urlencode(query_params)}"
+
+        kwargs: dict[str, Any] = {
+            "conn": self._connection_name,
+            "method": _METHOD_MAP[method],
+            "path": path,
+            "headers": headers or {},
+        }
+
+        if body is not None:
+            kwargs["json"] = body
+
+        response = self._client.serving_endpoints.http_request(**kwargs)
+
+        raw = response.contents
+        try:
+            parsed_body: dict[str, Any] | str = json.loads(raw) if raw else {}
+        except (json.JSONDecodeError, TypeError):
+            parsed_body = raw
+
+        return UCResponse(
+            status_code=response.status_code,
+            body=parsed_body,
+            headers=dict(response.headers) if response.headers else {},
+            raw_contents=raw,
+        )

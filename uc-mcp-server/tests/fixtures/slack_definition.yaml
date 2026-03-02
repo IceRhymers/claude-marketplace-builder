@@ -1,0 +1,43 @@
+name: slack
+connection: slack_connection
+description: Slack API integration
+base_url: https://slack.com/api
+auth:
+  type: bearer
+  token_env: SLACK_BOT_TOKEN
+tools:
+  - name: slack_send_message
+    description: Send a message to a Slack channel
+    method: POST
+    path: /chat.postMessage
+    input_schema:
+      type: object
+      properties:
+        channel:
+          type: string
+          description: Channel ID or name
+        text:
+          type: string
+          description: Message text
+      required:
+        - channel
+        - text
+    response:
+      result_key: message
+      error_key: error
+      success_field: ok
+      result_template: "Sent message to {channel}"
+  - name: slack_list_channels
+    description: List Slack channels
+    method: POST
+    path: /conversations.list
+    input_schema:
+      type: object
+      properties:
+        limit:
+          type: integer
+          description: Max channels to return
+    response:
+      result_key: channels
+      error_key: error
+      success_field: ok

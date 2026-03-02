@@ -1,0 +1,6 @@
+connection: test_connection
+tools:
+  - name: get_item
+    description: Get an item
+    method: GET
+    path: /items

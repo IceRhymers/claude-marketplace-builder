@@ -1,0 +1,7 @@
+name: test-service
+connection: test_connection
+tools:
+  - name: "Get Item!"
+    description: Get an item
+    method: GET
+    path: /items

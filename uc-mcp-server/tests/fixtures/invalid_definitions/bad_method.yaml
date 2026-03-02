@@ -1,0 +1,7 @@
+name: test-service
+connection: test_connection
+tools:
+  - name: get_item
+    description: Get an item
+    method: TRACE
+    path: /items
