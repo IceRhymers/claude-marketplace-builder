@@ -1,0 +1,16 @@
+resources:
+  postgres_projects:
+    usage_limits_db:
+      project_id: "usage-limits"
+      display_name: "Usage Limits App Database"
+      pg_version: 17
+
+  postgres_branches:
+    usage_limits_branch:
+      parent: ${resources.postgres_projects.usage_limits_db.id}
+      branch_id: "main"
+
+  postgres_endpoints:
+    usage_limits_endpoint:
+      parent: ${resources.postgres_branches.usage_limits_branch.id}
+      endpoint_id: "app-endpoint"

@@ -1,0 +1,18 @@
+bundle:
+  name: usage-limits
+
+include:
+  - resources/*.yml
+
+variables:
+  sql_warehouse_id:
+    description: "SQL warehouse ID for querying system tables"
+  admin_user:
+    description: "Admin user email for CAN_MANAGE permission"
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

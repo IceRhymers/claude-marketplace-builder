@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "type": "command",
+        "command": "bash /path/to/usage-limits/hooks/check-budget.sh",
+        "timeout": 10000
+      }
+    ]
+  }
+}

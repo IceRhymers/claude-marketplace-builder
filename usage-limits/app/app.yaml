@@ -1,0 +1,21 @@
+command:
+  - python
+  - launcher.py
+
+env:
+  - name: PGHOST
+    valueFrom: usage-limits-db
+  - name: PGDATABASE
+    valueFrom: usage-limits-db
+  - name: PGUSER
+    valueFrom: usage-limits-db
+  - name: LAKEBASE_ENDPOINT
+    valueFrom: usage-limits-db
+  - name: SQL_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: EVALUATION_INTERVAL_MINUTES
+    value: "5"
+  - name: BUDGET_API_PORT
+    value: "8502"
+  - name: OTEL_TABLE
+    value: ""

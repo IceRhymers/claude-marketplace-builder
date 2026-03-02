@@ -14,6 +14,7 @@ PLUGINS := \
 MARKETPLACE := icerhymers-marketplace
 
 # Overridable variables
+APP       ?= usage-limits ## Databricks app name for test targets (default: usage-limits)
 SKILL     ?=           ## Path to a single skill dir (default: all)
 FILTER    ?=           ## Eval name filter substring (default: none)
 WORKERS   ?= 8         ## Parallel eval workers (default: 8)
@@ -89,4 +90,24 @@ init:
 configure:
 	bash scripts/configure-inference.sh
 
-.PHONY: help validate evals evals-install install-local uninstall-local init configure
+## Install app Python dependencies (uv sync)
+app-install:
+	cd $(APP)/app && uv sync
+
+## Run Databricks app tests
+test-app:
+	cd $(APP)/app && uv run pytest tests/ -v
+
+## Run app tests with coverage report
+test-app-coverage:
+	cd $(APP)/app && uv run pytest tests/ --cov=core --cov-report=term-missing --cov-fail-under=80
+
+## Run only app unit tests (fast feedback)
+test-app-unit:
+	cd $(APP)/app && uv run pytest tests/ -m unit -v
+
+## Run only app integration tests
+test-app-integration:
+	cd $(APP)/app && uv run pytest tests/ -m integration -v
+
+.PHONY: help validate evals evals-install install-local uninstall-local init configure app-install test-app test-app-coverage test-app-unit test-app-integration
