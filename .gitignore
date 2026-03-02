@@ -19,3 +19,4 @@ uc-mcp-server/build/output/
 
 
 .claude/worktrees/
+.mcp.json
