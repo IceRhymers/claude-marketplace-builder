@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import re
 from typing import Any, Optional
 
@@ -99,15 +100,58 @@ def openapi_to_definition(
     }
 
 
+def merge_definitions(
+    existing: dict[str, Any],
+    generated: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge generated tools into an existing definition, preserving custom tools.
+
+    - Tools in *existing* with ``source: custom`` are kept.
+    - Tools in *existing* without a ``source`` tag (legacy) are treated as openapi
+      and replaced by the newly generated set.
+    - All generated tools are tagged ``source: openapi``.
+    - If a custom tool name collides with a generated one, the custom version wins.
+    - Ordering: openapi tools first, then custom tools.
+    - Top-level metadata (description, base_url, auth) is preserved from *existing*.
+    """
+    custom_tools = [
+        t for t in existing.get("tools", []) if t.get("source") == "custom"
+    ]
+    custom_names = {t["name"] for t in custom_tools}
+
+    openapi_tools = []
+    for t in generated.get("tools", []):
+        t["source"] = "openapi"
+        if t["name"] not in custom_names:
+            openapi_tools.append(t)
+
+    result = dict(generated)
+    result["tools"] = openapi_tools + custom_tools
+
+    # Preserve top-level metadata from existing definition
+    for key in ("description", "base_url", "auth"):
+        if key in existing:
+            result[key] = existing[key]
+
+    return result
+
+
 def generate_from_openapi(
     spec_path: str,
     connection_name: str,
     output_path: Optional[str] = None,
     service_name: Optional[str] = None,
+    merge: bool = False,
 ) -> dict[str, Any]:
     """Load an OpenAPI spec and generate a UC MCP definition."""
     spec = _load_openapi_spec(spec_path)
     definition = openapi_to_definition(spec, connection_name, service_name=service_name)
+
+    if merge and output_path:
+        out = pathlib.Path(output_path)
+        if out.exists():
+            existing = yaml.safe_load(out.read_text())
+            definition = merge_definitions(existing, definition)
 
     if output_path:
         with open(output_path, "w") as f:

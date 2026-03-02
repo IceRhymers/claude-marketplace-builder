@@ -46,7 +46,7 @@ class TestUCConnection:
         assert result.body == {"result": "ok"}
 
     def test_response_parsing_non_json(self, mock_workspace_client):
-        mock_workspace_client.serving_endpoints.http_request.return_value.contents = "plain text"
+        mock_workspace_client.serving_endpoints.http_request.return_value.text = "plain text"
         conn = UCConnection("test_conn", client=mock_workspace_client)
         result = conn.request("GET", "/items")
 
@@ -61,7 +61,7 @@ class TestUCConnection:
         assert call_kwargs.kwargs["headers"]["X-Custom"] == "value"
 
     def test_empty_response_body(self, mock_workspace_client):
-        mock_workspace_client.serving_endpoints.http_request.return_value.contents = ""
+        mock_workspace_client.serving_endpoints.http_request.return_value.text = ""
         conn = UCConnection("test_conn", client=mock_workspace_client)
         result = conn.request("GET", "/items")
 

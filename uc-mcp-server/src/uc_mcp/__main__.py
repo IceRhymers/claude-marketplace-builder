@@ -31,19 +31,17 @@ def main() -> None:
     validate_parser = subparsers.add_parser("validate", help="Validate a YAML definition")
     validate_parser.add_argument("definition", help="Path to YAML definition file")
 
-    # ── introspect ───────────────────────────────────────────────
-    introspect_parser = subparsers.add_parser("introspect", help="Introspect an MCP server")
-    introspect_parser.add_argument("command", help="Command to run the MCP server")
-    introspect_parser.add_argument("--connection", required=True, help="UC connection name")
-    introspect_parser.add_argument("--output", "-o", help="Output YAML path")
-    introspect_parser.add_argument("--name", help="Service name override")
-
     # ── from-openapi ─────────────────────────────────────────────
     openapi_parser = subparsers.add_parser("from-openapi", help="Generate definition from OpenAPI spec")
     openapi_parser.add_argument("spec", help="Path or URL to OpenAPI spec")
     openapi_parser.add_argument("--connection", required=True, help="UC connection name")
     openapi_parser.add_argument("--output", "-o", help="Output YAML path")
     openapi_parser.add_argument("--name", help="Service name override")
+    openapi_parser.add_argument(
+        "--merge",
+        action="store_true",
+        help="Merge with existing definition, preserving source: custom tools",
+    )
 
     # ── build ────────────────────────────────────────────────────
     build_parser = subparsers.add_parser("build", help="Build .pex executable")
@@ -85,24 +83,6 @@ def main() -> None:
         defn = load_definition(path)
         print(f"Valid: {defn.name} ({len(defn.tools)} tools)")
 
-    elif args.command == "introspect":
-        import asyncio
-
-        from uc_mcp.codegen.introspect import introspect_server
-
-        result = asyncio.run(
-            introspect_server(
-                args.command,
-                args.connection,
-                output_path=args.output,
-                service_name=args.name,
-            )
-        )
-        if not args.output:
-            import yaml
-
-            print(yaml.dump(result, default_flow_style=False))
-
     elif args.command == "from-openapi":
         from uc_mcp.codegen.from_openapi import generate_from_openapi
 
@@ -111,6 +91,7 @@ def main() -> None:
             args.connection,
             output_path=args.output,
             service_name=args.name,
+            merge=args.merge,
         )
         if not args.output:
             import yaml

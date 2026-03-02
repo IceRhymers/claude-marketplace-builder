@@ -96,21 +96,54 @@ def _make_tool_handler(
     return handler
 
 
-def register_tools(
-    mcp: Any, definition: ServiceDefinition, connection: UCConnection
-) -> list[str]:
-    """Register all tools from a service definition onto an MCP server."""
-    registered: list[str] = []
+def build_tool_list(definition: ServiceDefinition) -> list[Any]:
+    """Build a list of MCP Tool objects from a service definition."""
+    from mcp.types import Tool
 
+    tools: list[Tool] = []
     for tool_def in definition.tools:
-        handler = _make_tool_handler(tool_def, connection)
-
-        # Build input schema for MCP tool registration
         input_schema = tool_def.input_schema or {
             "type": "object",
             "properties": {},
         }
+        tools.append(
+            Tool(
+                name=tool_def.name,
+                description=tool_def.description,
+                inputSchema=input_schema,
+            )
+        )
+    return tools
 
+
+def make_dispatcher(
+    definition: ServiceDefinition, connection: UCConnection
+) -> Callable[..., Any]:
+    """Create a dispatcher that routes tool calls to the correct handler."""
+    handlers: dict[str, Callable[..., Any]] = {}
+    for tool_def in definition.tools:
+        handlers[tool_def.name] = _make_tool_handler(tool_def, connection)
+
+    async def dispatch(name: str, arguments: dict[str, Any]) -> str:
+        handler = handlers.get(name)
+        if handler is None:
+            return f"Error: unknown tool '{name}'"
+        return await handler(**arguments)
+
+    return dispatch
+
+
+def register_tools(
+    mcp: Any, definition: ServiceDefinition, connection: UCConnection
+) -> list[str]:
+    """Register all tools from a service definition onto an MCP server.
+
+    Legacy helper kept for backwards compatibility with tests.
+    """
+    registered: list[str] = []
+
+    for tool_def in definition.tools:
+        handler = _make_tool_handler(tool_def, connection)
         mcp.tool(name=tool_def.name, description=tool_def.description)(handler)
         registered.append(tool_def.name)
 

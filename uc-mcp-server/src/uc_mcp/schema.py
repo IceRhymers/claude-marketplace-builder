@@ -9,7 +9,7 @@ from typing import Any, Optional
 import jsonschema
 import yaml
 
-_SCHEMA_PATH = pathlib.Path(__file__).resolve().parent.parent.parent / "definitions" / "_schema.yaml"
+_SCHEMA_PATH = pathlib.Path(__file__).resolve().parent / "_schema.yaml"
 
 
 @dataclass

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from uc_mcp.codegen.from_openapi import _make_tool_name, openapi_to_definition
+from uc_mcp.codegen.from_openapi import (
+    _make_tool_name,
+    merge_definitions,
+    openapi_to_definition,
+)
 
 
 class TestMakeToolName:
@@ -84,3 +88,135 @@ class TestOpenApiToDefinition:
         result = openapi_to_definition(spec, "test_conn")
         tool = result["tools"][0]
         assert "user_id" in tool["input_schema"]["properties"]
+
+
+class TestMergeDefinitions:
+    """Tests for merge_definitions() — preserving custom tools on regeneration."""
+
+    def _make_tool(self, name: str, source: str | None = None, **extra) -> dict:
+        tool = {
+            "name": name,
+            "description": f"Tool {name}",
+            "method": "GET",
+            "path": f"/{name}",
+            "input_schema": {"type": "object", "properties": {}},
+            **extra,
+        }
+        if source is not None:
+            tool["source"] = source
+        return tool
+
+    def test_custom_tools_preserved(self):
+        existing = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [
+                self._make_tool("gen_tool", source="openapi"),
+                self._make_tool("my_custom", source="custom"),
+            ],
+        }
+        generated = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [self._make_tool("gen_tool")],
+        }
+        result = merge_definitions(existing, generated)
+        names = [t["name"] for t in result["tools"]]
+        assert "my_custom" in names
+
+    def test_generated_tools_tagged_openapi(self):
+        existing = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [],
+        }
+        generated = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [self._make_tool("new_tool")],
+        }
+        result = merge_definitions(existing, generated)
+        assert result["tools"][0]["source"] == "openapi"
+
+    def test_untagged_legacy_tools_treated_as_openapi(self):
+        """Legacy tools without a source tag are treated as openapi (replaced)."""
+        existing = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [
+                self._make_tool("old_tool"),  # no source tag
+            ],
+        }
+        generated = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [self._make_tool("new_tool")],
+        }
+        result = merge_definitions(existing, generated)
+        names = [t["name"] for t in result["tools"]]
+        assert "old_tool" not in names
+        assert "new_tool" in names
+
+    def test_ordering_openapi_first_then_custom(self):
+        existing = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [
+                self._make_tool("custom_a", source="custom"),
+                self._make_tool("gen_tool", source="openapi"),
+                self._make_tool("custom_b", source="custom"),
+            ],
+        }
+        generated = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [self._make_tool("gen_tool"), self._make_tool("gen_two")],
+        }
+        result = merge_definitions(existing, generated)
+        sources = [t.get("source") for t in result["tools"]]
+        # All openapi tools come before all custom tools
+        openapi_indices = [i for i, s in enumerate(sources) if s == "openapi"]
+        custom_indices = [i for i, s in enumerate(sources) if s == "custom"]
+        assert max(openapi_indices) < min(custom_indices)
+
+    def test_top_level_fields_preserved_from_existing(self):
+        existing = {
+            "name": "svc",
+            "connection": "conn",
+            "description": "My service description",
+            "base_url": "https://api.example.com",
+            "auth": {"type": "bearer", "token_env": "MY_TOKEN"},
+            "tools": [self._make_tool("custom_tool", source="custom")],
+        }
+        generated = {
+            "name": "svc-new",
+            "connection": "conn",
+            "tools": [self._make_tool("gen_tool")],
+        }
+        result = merge_definitions(existing, generated)
+        assert result["description"] == "My service description"
+        assert result["base_url"] == "https://api.example.com"
+        assert result["auth"] == {"type": "bearer", "token_env": "MY_TOKEN"}
+
+    def test_name_collision_custom_wins(self):
+        """If a custom tool has the same name as a generated tool, keep custom."""
+        custom_tool = self._make_tool("shared_name", source="custom")
+        custom_tool["description"] = "Custom version"
+        gen_tool = self._make_tool("shared_name")
+        gen_tool["description"] = "Generated version"
+
+        existing = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [custom_tool],
+        }
+        generated = {
+            "name": "svc",
+            "connection": "conn",
+            "tools": [gen_tool],
+        }
+        result = merge_definitions(existing, generated)
+        matched = [t for t in result["tools"] if t["name"] == "shared_name"]
+        assert len(matched) == 1
+        assert matched[0]["description"] == "Custom version"
+        assert matched[0]["source"] == "custom"

@@ -34,8 +34,6 @@ properties:
   tools:
     type: array
     minItems: 1
-    # additionalProperties is intentionally unrestricted on tool items
-    # to allow the codegen-only "source" metadata field (openapi | custom).
     items:
       type: object
       required:
