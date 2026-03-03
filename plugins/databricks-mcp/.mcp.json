@@ -8,6 +8,13 @@
         "--url", "https://slack-mcp-server-468531251905809.aws.databricksapps.com/mcp/",
         "--auth-type", "databricks-cli"
       ]
+    },
+    "genie-mcp": {
+      "type": "sse",
+      "url": "${DATABRICKS_HOST}/api/2.0/mcp/genie/01f11733962d175c9ad16dc83db6e9af",
+      "headers": {
+        "Authorization": "Bearer ${DATABRICKS_TOKEN}"
+      }
     }
   }
 }

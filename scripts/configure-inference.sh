@@ -415,6 +415,10 @@ configure_databricks() {
     echo "ANTHROPIC_DEFAULT_HAIKU_MODEL=databricks-claude-haiku-4-5"
     echo "ANTHROPIC_CUSTOM_HEADERS=x-databricks-use-coding-agent-mode: true"
     echo "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1"
+    echo "DATABRICKS_HOST=${workspace_url}"
+    if [ -n "$auth_token" ]; then
+      echo "DATABRICKS_TOKEN=${auth_token}"
+    fi
   } > "$env_file"
 }
 
