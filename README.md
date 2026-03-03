@@ -35,6 +35,7 @@ claude plugin install icerhymers-databricks-skills@icerhymers-marketplace
 claude plugin install icerhymers-internal-skills@icerhymers-marketplace
 claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
 claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
+claude plugin install icerhymers-databricks-mcp@icerhymers-marketplace
 ```
 
 ## Inference Configuration
@@ -119,6 +120,23 @@ Specialized utility tools for diagrams, conversions, and more.
 |-------|-------------|------------|
 | `lucid-diagram` | Generate architecture/data flow/sequence diagrams as Graphviz DOT and convert to PNG + Lucid Chart XML | `/lucid-diagram` |
 
+### databricks-mcp
+
+Databricks-hosted MCP server connections for Claude Code.
+
+| Skill | Description | Invocation |
+|-------|-------------|------------|
+| `mcp-setup` | Verify Databricks auth and troubleshoot MCP server connections | `/mcp-setup` |
+
+## Related Projects
+
+These companion projects are developed separately and used by this marketplace:
+
+| Project | Description | Repo |
+|---------|-------------|------|
+| **uc-mcp-server** | Framework for generating MCP servers that proxy HTTP APIs through Databricks UC connections | [IceRhymers/uc-mcp-server](https://github.com/IceRhymers/uc-mcp-server) |
+| **uc-mcp-proxy** | Stdio-to-HTTP bridge so Claude Code can connect to Databricks-hosted MCP servers | [IceRhymers/uc-mcp-proxy](https://github.com/IceRhymers/uc-mcp-proxy) |
+
 ## Adding a New Skill
 
 The easiest way:
@@ -197,6 +215,11 @@ plugins/
     .claude-plugin/plugin.json
     skills/
       lucid-diagram/               Diagram generation (with scripts/ and references/)
+  databricks-mcp/                  Databricks-hosted MCP server connections
+    .claude-plugin/plugin.json
+    .mcp.json                      Auto-configured MCP servers (Slack, etc.)
+    skills/
+      mcp-setup/                   Auth verification & troubleshooting
 .claude/
   skills/
     build-skill/SKILL.md           Repo-scoped authoring tool (NOT distributed)

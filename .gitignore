@@ -12,8 +12,6 @@ dist/
 .env.local
 config/inference.env
 evals/.venv/
-uc-mcp-server/.venv/
-uc-mcp-server/dist/
 
 .claude/worktrees/
 .mcp.json

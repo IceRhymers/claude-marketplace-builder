@@ -29,15 +29,6 @@ tests:
     prompt: "Generate a Graphviz DOT diagram of the data flow between our ingestion layer, bronze, silver, and gold tables"
     expected_skill: lucid-diagram
 
-  # --- from-openapi-mcp (2) ---
-  - name: from-openapi-mcp-generate
-    prompt: "Generate a YAML definition from the Slack OpenAPI spec"
-    expected_skill: from-openapi-mcp
-
-  - name: from-openapi-mcp-new-service
-    prompt: "Create a UC MCP definition from the Jira OpenAPI specification"
-    expected_skill: from-openapi-mcp
-
   # --- mcp-setup (2) ---
   - name: mcp-setup-auth-check
     prompt: "My MCP tools aren't showing up in Claude Code, can you help me verify my Databricks auth is configured correctly?"
