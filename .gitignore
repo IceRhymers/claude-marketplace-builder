@@ -7,14 +7,13 @@ node_modules/
 CLAUDE.local.md
 *.egg-info/
 dist/
-build/
+**/build/output/
 .env
 .env.local
 config/inference.env
 evals/.venv/
 uc-mcp-server/.venv/
 uc-mcp-server/dist/
-uc-mcp-server/build/output/
 *.pex
 
 .claude/worktrees/
