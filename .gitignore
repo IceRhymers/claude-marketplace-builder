@@ -17,6 +17,6 @@ uc-mcp-server/dist/
 uc-mcp-server/build/output/
 *.pex
 
-
 .claude/worktrees/
 .mcp.json
+.coverage
