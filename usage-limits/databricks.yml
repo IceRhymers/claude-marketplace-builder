@@ -7,8 +7,11 @@ include:
 variables:
   sql_warehouse_id:
     description: "SQL warehouse ID for querying system tables"
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
   admin_user:
     description: "Admin user email for CAN_MANAGE permission"
+    default: ${workspace.current_user.userName}
 
 targets:
   dev:
