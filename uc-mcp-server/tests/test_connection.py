@@ -28,14 +28,13 @@ class TestUCConnection:
         call_kwargs = mock_workspace_client.serving_endpoints.http_request.call_args
         assert call_kwargs.kwargs["json"] == body
 
-    def test_query_params_appended_to_path(self, mock_workspace_client):
+    def test_query_params_passed_via_params_kwarg(self, mock_workspace_client):
         conn = UCConnection("test_conn", client=mock_workspace_client)
-        conn.request("GET", "/items", query_params={"limit": "10", "offset": "0"})
+        conn.request("GET", "/items", query_params={"limit": 10, "offset": 0})
 
         call_kwargs = mock_workspace_client.serving_endpoints.http_request.call_args
-        path = call_kwargs.kwargs["path"]
-        assert "limit=10" in path
-        assert "offset=0" in path
+        assert call_kwargs.kwargs["path"] == "/items"
+        assert call_kwargs.kwargs["params"] == {"limit": 10, "offset": 0}
 
     def test_response_parsing_json(self, mock_workspace_client):
         conn = UCConnection("test_conn", client=mock_workspace_client)

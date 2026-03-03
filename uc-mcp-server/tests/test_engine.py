@@ -162,10 +162,10 @@ class TestMakeToolHandler:
         )
 
         handler = _make_tool_handler(tool, mock_conn)
-        result = await handler(item_id="123", limit="10", offset="0")
+        result = await handler(item_id="123", limit=10, offset=0)
 
         call_kwargs = mock_conn.request.call_args.kwargs
-        assert "limit" in call_kwargs["query_params"]
-        assert "offset" in call_kwargs["query_params"]
+        assert call_kwargs["query_params"]["limit"] == 10
+        assert call_kwargs["query_params"]["offset"] == 0
         # limit and offset should NOT be in body
         assert call_kwargs.get("body") is None or "limit" not in call_kwargs.get("body", {})

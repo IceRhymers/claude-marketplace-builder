@@ -1,0 +1,100 @@
+name: Release uc-mcp-proxy
+
+on:
+  push:
+    tags:
+      - 'proxy-v*'  # Trigger on tags like proxy-v0.1.0
+
+permissions:
+  contents: write  # Needed for creating releases
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        working-directory: uc-mcp-proxy
+        run: uv sync --dev
+
+      - name: Run tests
+        working-directory: uc-mcp-proxy
+        run: uv run pytest tests/ -v --cov=uc_mcp_proxy --cov-fail-under=80
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install build dependencies
+        working-directory: uc-mcp-proxy
+        run: uv sync --dev
+
+      - name: Build PEX
+        working-directory: uc-mcp-proxy
+        run: bash build/build.sh
+
+      - name: Upload PEX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uc-mcp-proxy-pex
+          path: uc-mcp-proxy/build/output/uc-mcp-proxy.pex
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download PEX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: uc-mcp-proxy-pex
+          path: ./artifacts
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#proxy-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: uc-mcp-proxy v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## uc-mcp-proxy v${{ steps.version.outputs.VERSION }}
+
+            MCP stdio-to-Streamable-HTTP proxy with Databricks OAuth.
+
+            ### Installation
+
+            ```bash
+            curl -sL "${{ github.server_url }}/${{ github.repository }}/releases/download/${{ github.ref_name }}/uc-mcp-proxy.pex" \
+              -o "${HOME}/.local/bin/uc-mcp-proxy.pex"
+            chmod +x "${HOME}/.local/bin/uc-mcp-proxy.pex"
+            ```
+
+            ### Usage
+
+            ```bash
+            uc-mcp-proxy.pex --profile DEFAULT --url https://your-app.cloud.databricks.com/mcp
+            ```
+          files: |
+            artifacts/uc-mcp-proxy.pex
+          fail_on_unmatched_files: true

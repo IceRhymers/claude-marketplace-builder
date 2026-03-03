@@ -6,8 +6,6 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from urllib.parse import urlencode
-
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.serving import ExternalFunctionRequestHttpMethod
 
@@ -46,13 +44,9 @@ class UCConnection:
         *,
         body: Optional[dict[str, Any]] = None,
         headers: Optional[dict[str, str]] = None,
-        query_params: Optional[dict[str, str]] = None,
+        query_params: Optional[dict[str, Any]] = None,
     ) -> UCResponse:
         """Execute an HTTP request through the UC connection."""
-        if query_params:
-            separator = "&" if "?" in path else "?"
-            path = f"{path}{separator}{urlencode(query_params)}"
-
         # ServingEndpointsExt.http_request uses:
         #   conn: str, method: enum, path: str,
         #   headers: Optional[Dict], json: Optional[Dict], params: Optional[Dict]
