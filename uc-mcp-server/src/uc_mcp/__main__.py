@@ -48,6 +48,11 @@ def main() -> None:
     build_parser.add_argument("definition", help="Path to YAML definition file")
     build_parser.add_argument("--scie", action="store_true", help="Build as SCIE")
 
+    # ── app ────────────────────────────────────────────────────
+    app_parser = subparsers.add_parser("app", help="Generate Databricks Asset Bundle")
+    app_parser.add_argument("definition", help="Path to YAML definition")
+    app_parser.add_argument("--output", "-o", help="Output directory")
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -106,6 +111,12 @@ def main() -> None:
         if args.scie:
             cmd.append("--scie")
         subprocess.run(cmd, check=True)
+
+    elif args.command == "app":
+        from uc_mcp.codegen.app_generator import generate_app
+
+        result = generate_app(args.definition, output_dir=args.output)
+        print(f"Generated DAB at: {result}")
 
 
 if __name__ == "__main__":

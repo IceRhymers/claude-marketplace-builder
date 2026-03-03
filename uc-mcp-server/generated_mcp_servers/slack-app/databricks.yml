@@ -1,0 +1,16 @@
+bundle:
+  name: slack-mcp-server
+
+resources:
+  apps:
+    slack_mcp:
+      name: 'slack-mcp-server'
+      source_code_path: .
+      description: 'MCP server for slack'
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

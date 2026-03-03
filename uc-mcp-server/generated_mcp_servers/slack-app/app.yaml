@@ -1,0 +1,7 @@
+command:
+  - uv
+  - run
+  - slack-mcp-server
+env:
+  - name: UC_CONNECTION_NAME
+    value: 'slack'

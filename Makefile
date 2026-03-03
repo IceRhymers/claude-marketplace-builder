@@ -125,6 +125,14 @@ else
 	cd uc-mcp-server && bash build/build.sh $(DEF)
 endif
 
+## Generate Databricks App Bundle (DEF=path)
+uc-mcp-app:
+ifeq ($(DEF),)
+	@echo "Usage: make uc-mcp-app DEF=uc-mcp-server/definitions/slack.yaml" >&2 && exit 1
+else
+	cd uc-mcp-server && uv run uc-mcp app $(DEF) $(if $(OUTPUT),-o $(OUTPUT))
+endif
+
 ## Introspect MCP server (CMD=, CONN=)
 uc-mcp-introspect:
 ifeq ($(CMD),)
@@ -134,6 +142,30 @@ else ifeq ($(CONN),)
 else
 	cd uc-mcp-server && uv run uc-mcp introspect "$(CMD)" --connection $(CONN)
 endif
+
+# ------------------------------------------------------------------------------
+# uc-mcp-proxy targets
+# ------------------------------------------------------------------------------
+
+## Run uc-mcp-proxy unit tests
+test-proxy:
+	cd uc-mcp-proxy && uv run python -m pytest tests/ -v
+
+## Run proxy tests with coverage report
+test-proxy-coverage:
+	cd uc-mcp-proxy && uv run python -m pytest tests/ --cov=uc_mcp_proxy --cov-report=term-missing --cov-fail-under=80
+
+## Run only proxy unit tests (fast feedback)
+test-proxy-unit:
+	cd uc-mcp-proxy && uv run python -m pytest tests/ -m unit -v
+
+## Run only proxy integration tests
+test-proxy-integration:
+	cd uc-mcp-proxy && uv run python -m pytest tests/ -m integration -v
+
+## Build uc-mcp-proxy PEX executable
+build-proxy:
+	cd uc-mcp-proxy && bash build/build.sh
 
 # ------------------------------------------------------------------------------
 # Databricks App targets
@@ -160,5 +192,6 @@ test-app-integration:
 	cd $(APP)/app && uv run pytest tests/ -m integration -v
 
 .PHONY: help validate evals evals-install install-local uninstall-local init configure \
-	uc-mcp-install uc-mcp-test uc-mcp-coverage uc-mcp-validate uc-mcp-build uc-mcp-introspect \
+	uc-mcp-install uc-mcp-test uc-mcp-coverage uc-mcp-validate uc-mcp-build uc-mcp-app uc-mcp-introspect \
+	test-proxy test-proxy-coverage test-proxy-unit test-proxy-integration build-proxy \
 	app-install test-app test-app-coverage test-app-unit test-app-integration
