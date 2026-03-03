@@ -343,6 +343,14 @@ class TestRenderMainPy:
         assert "from uc_mcp" not in result
         assert "import uc_mcp" not in result
 
+    def test_no_str_coercion_on_query_params(self):
+        from uc_mcp.codegen.app_generator import render_main_py
+
+        result = render_main_py("slack", "slack_connection")
+        # query_params should NOT wrap values in str()
+        assert "str(params.pop(qp))" not in result
+        assert "str(v) for" not in result
+
     def test_is_valid_python(self):
         from uc_mcp.codegen.app_generator import render_main_py
 

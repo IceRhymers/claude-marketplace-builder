@@ -65,12 +65,12 @@ def _make_tool_handler(
         path = _build_path(tool_def.path, params)
 
         # Separate query params from body params
-        query_params: Optional[dict[str, str]] = None
+        query_params: Optional[dict[str, Any]] = None
         if tool_def.query_params:
             query_params = {}
             for qp in tool_def.query_params:
                 if qp in params:
-                    query_params[qp] = str(params.pop(qp))
+                    query_params[qp] = params.pop(qp)
 
         # Remaining params become body for non-GET methods
         body: Optional[dict[str, Any]] = None
@@ -78,7 +78,7 @@ def _make_tool_handler(
             body = params
         elif tool_def.method == "GET" and params and not query_params:
             # For GET, leftover params go to query_params
-            query_params = {k: str(v) for k, v in params.items()}
+            query_params = dict(params)
 
         response = connection.request(
             tool_def.method,

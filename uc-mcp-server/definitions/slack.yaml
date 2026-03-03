@@ -59,7 +59,7 @@ tools:
       inclusive:
         type: string
       limit:
-        type: string
+        type: integer
       cursor:
         type: string
   query_params:
@@ -82,7 +82,7 @@ tools:
       types:
         type: string
       limit:
-        type: string
+        type: integer
       cursor:
         type: string
   query_params:
@@ -109,7 +109,7 @@ tools:
       inclusive:
         type: string
       limit:
-        type: string
+        type: integer
       cursor:
         type: string
   query_params:
@@ -147,7 +147,7 @@ tools:
     type: object
     properties:
       limit:
-        type: string
+        type: integer
       cursor:
         type: string
       include_locale:

@@ -202,10 +202,6 @@ def uc_request(
     query_params: Optional[dict] = None,
 ) -> dict:
     """Execute an HTTP request through a UC connection and return parsed response."""
-    if query_params:
-        separator = "&" if "?" in path else "?"
-        path = f"{{path}}{{separator}}{{urlencode(query_params)}}"
-
     kwargs: dict[str, Any] = {{
         "conn": connection_name,
         "method": METHOD_MAP[method],
@@ -306,13 +302,13 @@ def build_server() -> Server:
             query_params = {{}}
             for qp in t["query_params"]:
                 if qp in params:
-                    query_params[qp] = str(params.pop(qp))
+                    query_params[qp] = params.pop(qp)
 
         body = None
         if t["method"] != "GET" and params:
             body = params
         elif t["method"] == "GET" and params and not query_params:
-            query_params = {{k: str(v) for k, v in params.items()}}
+            query_params = dict(params)
 
         # Per-request auth — get_workspace_client uses request context if available
         client = get_workspace_client()
