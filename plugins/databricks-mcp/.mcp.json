@@ -10,7 +10,7 @@
       ]
     },
     "genie-mcp": {
-      "type": "sse",
+      "type": "http",
       "url": "${DATABRICKS_HOST}/api/2.0/mcp/genie/01f11733962d175c9ad16dc83db6e9af",
       "headers": {
         "Authorization": "Bearer ${DATABRICKS_TOKEN}"
