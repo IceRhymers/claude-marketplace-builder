@@ -86,6 +86,11 @@ check_prerequisites() {
     echo "Please install the missing prerequisites and re-run this script."
     exit 1
   fi
+
+  if ! command -v uvx &>/dev/null; then
+    echo "WARNING: uvx not found. MCP proxy requires uv."
+    echo "  Install uv: https://docs.astral.sh/uv/"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -198,6 +203,10 @@ print_completion_summary() {
   echo "Try it out:"
   echo "  /build-skill              — Create a new skill"
   echo "  /update-skills            — Pull latest updates"
+  echo "  /mcp-setup                — Verify MCP server auth"
+  echo ""
+  echo "MCP tools (Slack, etc.) use uc-mcp-proxy via uvx (https://pypi.org/project/uc-mcp-proxy/)."
+  echo "Requires Databricks CLI auth: databricks auth login"
   echo ""
   echo "To update later:"
   echo "  bash $install_dir/scripts/install.sh"

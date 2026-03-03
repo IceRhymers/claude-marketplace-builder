@@ -26,6 +26,11 @@ plugins/
     .claude-plugin/plugin.json
     skills/
       lucid-diagram/               Diagram generation (with scripts/ and references/)
+  databricks-mcp/                  Databricks-hosted MCP server connections
+    .claude-plugin/plugin.json
+    .mcp.json                      Auto-configured MCP servers (Slack, etc.)
+    skills/
+      mcp-setup/                   Auth verification & troubleshooting
 evals/
   src/skill_evals/                 Python eval runner package (Agent SDK)
   test-cases/skill-routing.yaml    Skill routing test cases
@@ -100,6 +105,7 @@ claude plugin install icerhymers-databricks-skills@icerhymers-marketplace
 claude plugin install icerhymers-internal-skills@icerhymers-marketplace
 claude plugin install icerhymers-marketplace-management@icerhymers-marketplace
 claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
+claude plugin install icerhymers-databricks-mcp@icerhymers-marketplace
 ```
 
 ## Eval Requirements
@@ -166,7 +172,7 @@ uc-mcp-server/
 make uc-mcp-install              # Install dependencies
 make uc-mcp-test                 # Run tests (FILTER= for subset)
 make uc-mcp-validate DEF=path    # Validate a YAML definition
-make uc-mcp-build DEF=path       # Build .pex executable
+make uc-mcp-build DEF=path       # Build Databricks App bundle
 make uc-mcp-introspect CMD= CONN= # Introspect MCP server
 ```
 

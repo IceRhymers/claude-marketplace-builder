@@ -9,7 +9,8 @@ PLUGINS := \
 	icerhymers-databricks-skills \
 	icerhymers-internal-skills \
 	icerhymers-marketplace-management \
-	icerhymers-specialized-tools
+	icerhymers-specialized-tools \
+	icerhymers-databricks-mcp
 
 MARKETPLACE := icerhymers-marketplace
 
@@ -117,7 +118,7 @@ else
 	cd uc-mcp-server && uv run uc-mcp validate $(DEF)
 endif
 
-## Build .pex executable (DEF=path)
+## Build Databricks App bundle (DEF=path)
 uc-mcp-build:
 ifeq ($(DEF),)
 	@echo "Usage: make uc-mcp-build DEF=uc-mcp-server/definitions/slack.yaml" >&2 && exit 1
@@ -142,30 +143,6 @@ else ifeq ($(CONN),)
 else
 	cd uc-mcp-server && uv run uc-mcp introspect "$(CMD)" --connection $(CONN)
 endif
-
-# ------------------------------------------------------------------------------
-# uc-mcp-proxy targets
-# ------------------------------------------------------------------------------
-
-## Run uc-mcp-proxy unit tests
-test-proxy:
-	cd uc-mcp-proxy && uv run python -m pytest tests/ -v
-
-## Run proxy tests with coverage report
-test-proxy-coverage:
-	cd uc-mcp-proxy && uv run python -m pytest tests/ --cov=uc_mcp_proxy --cov-report=term-missing --cov-fail-under=80
-
-## Run only proxy unit tests (fast feedback)
-test-proxy-unit:
-	cd uc-mcp-proxy && uv run python -m pytest tests/ -m unit -v
-
-## Run only proxy integration tests
-test-proxy-integration:
-	cd uc-mcp-proxy && uv run python -m pytest tests/ -m integration -v
-
-## Build uc-mcp-proxy PEX executable
-build-proxy:
-	cd uc-mcp-proxy && bash build/build.sh
 
 # ------------------------------------------------------------------------------
 # Databricks App targets
@@ -193,5 +170,4 @@ test-app-integration:
 
 .PHONY: help validate evals evals-install install-local uninstall-local init configure \
 	uc-mcp-install uc-mcp-test uc-mcp-coverage uc-mcp-validate uc-mcp-build uc-mcp-app uc-mcp-introspect \
-	test-proxy test-proxy-coverage test-proxy-unit test-proxy-integration build-proxy \
 	app-install test-app test-app-coverage test-app-unit test-app-integration

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "slack-mcp": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "uc-mcp-proxy",
+        "--url", "https://slack-mcp-server-468531251905809.aws.databricksapps.com/mcp/",
+        "--auth-type", "databricks-cli"
+      ]
+    }
+  }
+}

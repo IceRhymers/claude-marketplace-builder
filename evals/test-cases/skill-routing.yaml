@@ -37,3 +37,12 @@ tests:
   - name: from-openapi-mcp-new-service
     prompt: "Create a UC MCP definition from the Jira OpenAPI specification"
     expected_skill: from-openapi-mcp
+
+  # --- mcp-setup (2) ---
+  - name: mcp-setup-auth-check
+    prompt: "My MCP tools aren't showing up in Claude Code, can you help me verify my Databricks auth is configured correctly?"
+    expected_skill: mcp-setup
+
+  - name: mcp-setup-proxy-missing
+    prompt: "MCP proxy isn't working when I try to use Slack tools"
+    expected_skill: mcp-setup
