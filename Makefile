@@ -10,7 +10,8 @@ PLUGINS := \
 	icerhymers-internal-skills \
 	icerhymers-marketplace-management \
 	icerhymers-specialized-tools \
-	icerhymers-databricks-mcp
+	icerhymers-databricks-mcp \
+	icerhymers-databricks-otel
 
 MARKETPLACE := icerhymers-marketplace
 
