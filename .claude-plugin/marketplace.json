@@ -58,6 +58,16 @@
         "name": "AI engineering"
       },
       "category": "mcp-servers"
+    },
+    {
+      "name": "icerhymers-databricks-otel",
+      "source": "./plugins/databricks-otel",
+      "description": "Auto-configures Claude Code OTEL telemetry export to a shared Databricks table",
+      "version": "1.0.0",
+      "author": {
+        "name": "AI engineering"
+      },
+      "category": "observability"
     }
   ]
 }
