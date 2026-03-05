@@ -5,23 +5,17 @@ import plotly.express as px
 import pandas as pd
 
 from app import get_resources
-from core.usage import get_daily_usage, get_user_usage
+from core.usage import get_dollar_usage, get_user_usage
 
 
 def render():
     st.header("User Detail")
 
     config, client, pool, discovery = get_resources()
-    source = discovery.system_table
-
-    if not source:
-        st.error("No system table available. Check workspace configuration.")
-        return
-
     warehouse_id = config.sql_warehouse_id
 
     # Get unique users from today's data for the selector
-    daily = get_daily_usage(client, warehouse_id, source=source)
+    daily = get_dollar_usage(client, warehouse_id)
     users = sorted({row.get("requester", "") for row in daily if row.get("requester")})
 
     if not users:
@@ -33,7 +27,7 @@ def render():
     if selected_user:
         # User usage history
         st.subheader(f"Usage History: {selected_user}")
-        history = get_user_usage(client, warehouse_id, user_email=selected_user, days=30, source=source)
+        history = get_user_usage(client, warehouse_id, user_email=selected_user, days=30)
 
         if history:
             df = pd.DataFrame(history)
