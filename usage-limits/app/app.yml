@@ -6,11 +6,9 @@ env:
   - name: PGHOST
     valueFrom: usage-limits-db
   - name: PGDATABASE
-    valueFrom: usage-limits-db
-  - name: PGUSER
-    valueFrom: usage-limits-db
-  - name: LAKEBASE_ENDPOINT
-    valueFrom: usage-limits-db
+    value: "databricks_postgres"
+  - name: LAKEBASE_INSTANCE
+    value: "usage-limits"
   - name: SQL_WAREHOUSE_ID
     valueFrom: sql-warehouse
   - name: EVALUATION_INTERVAL_MINUTES

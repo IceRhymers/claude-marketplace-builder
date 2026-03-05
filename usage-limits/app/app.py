@@ -2,12 +2,17 @@
 
 import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+
 import streamlit as st
 from databricks.sdk import WorkspaceClient
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from core.config import AppConfig
-from core.db import create_pool, init_schema
+from core.db import create_engine_from_config, init_schema, make_session_factory
 from core.discovery import discover_data_sources
 from core.evaluator import run_evaluation_cycle
 
@@ -16,29 +21,45 @@ logger = logging.getLogger(__name__)
 
 @st.cache_resource
 def get_resources():
-    """Initialize and cache app resources (config, client, pool, discovery)."""
+    """Initialize and cache app resources (config, client, engine, discovery)."""
+    logger.info("Initializing app resources")
     config = AppConfig.from_env()
     client = WorkspaceClient()
-    pool = create_pool(config)
-    init_schema(pool)
+    engine = create_engine_from_config(config)
+    init_schema(engine)
+    session_factory = make_session_factory(engine)
     discovery = discover_data_sources(client, config.sql_warehouse_id)
-    return config, client, pool, discovery
+    logger.info("App resources initialized: system_table=%s, inference_tables=%d",
+                discovery.system_table, len(discovery.inference_tables))
+    return config, client, session_factory, discovery
 
 
 @st.cache_resource
-def start_evaluator(_config, _client, _pool, _discovery):
+def start_evaluator(_config, _client, _session_factory, _discovery):
     """Start the background budget evaluator on a schedule."""
-    source = "ai_gateway" if _discovery.system_table and "ai_gateway" in _discovery.system_table else "endpoint"
+
+    def _run_cycle():
+        session = _session_factory()
+        try:
+            run_evaluation_cycle(_client, session, _config.sql_warehouse_id)
+        finally:
+            session.close()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(
-        run_evaluation_cycle,
+        _run_cycle,
         "interval",
         minutes=_config.evaluation_interval_minutes,
-        args=[_client, _pool, _config.sql_warehouse_id, source],
         id="budget_evaluator",
     )
     scheduler.start()
     return scheduler
+
+
+def get_session():
+    """Create a new database session from the cached factory."""
+    _, _, session_factory, _ = get_resources()
+    return session_factory()
 
 
 def main():
@@ -51,8 +72,8 @@ def main():
     st.title("Claude Code Usage Limits")
     st.markdown("Monitor token usage and manage budgets for Claude Code endpoints.")
 
-    config, client, pool, discovery = get_resources()
-    start_evaluator(config, client, pool, discovery)
+    config, client, session_factory, discovery = get_resources()
+    start_evaluator(config, client, session_factory, discovery)
 
     st.sidebar.header("Data Sources")
     if discovery.system_table:

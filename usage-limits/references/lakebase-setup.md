@@ -6,14 +6,21 @@
 - Service principal with appropriate permissions
 - Databricks SDK configured
 
-## Creating a Lakebase Project
+## Creating a Lakebase Provisioned Instance
 
-### Automated (Recommended)
+### Via DABs (Recommended)
+
+The `resources/lakebase.yml` bundle config manages the Lakebase Provisioned instance
+and catalog automatically. Just deploy the bundle:
 
 ```bash
-cd plugins/databricks-skills/skills/usage-limits
-python -m scripts.setup_lakebase --name usage-limits
+cd usage-limits
+databricks bundle deploy -t dev
 ```
+
+This creates:
+- A `database_instances` resource (`usage-limits`) with CU_1 capacity
+- A `database_catalogs` resource (`usage_limits`) linked to the instance
 
 ### Manual (via SDK)
 
@@ -22,47 +29,50 @@ from databricks.sdk import WorkspaceClient
 
 w = WorkspaceClient()
 
-# Create project
-project = w.postgres.create_project(name="usage-limits")
-
-# Create endpoint
-endpoint = w.postgres.create_endpoint(
-    project_name=project.name,
-    branch_name="main",
+# Create a Lakebase Provisioned instance
+instance = w.database.create_instance(
+    name="usage-limits",
+    capacity="CU_1",
 )
 
-# Use these values in app.yaml env vars
-print(f"PGHOST: {endpoint.host}")
-print(f"PGDATABASE: {endpoint.database}")
-print(f"LAKEBASE_ENDPOINT: {endpoint.endpoint}")
+# Create a catalog on the instance
+catalog = w.database.create_catalog(
+    database_instance_name=instance.name,
+    name="usage_limits",
+    database_name="databricks_postgres",
+    create_database_if_not_exists=True,
+)
+
+print(f"Instance: {instance.name}")
+print(f"Catalog: {catalog.name}")
 ```
 
 ## Environment Variables
 
+The app `database` resource in `resources/app.yml` auto-injects standard PG env vars.
 Set these in `app.yaml`:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `PGHOST` | Lakebase hostname | `abc123.cloud.databricks.com` |
-| `PGDATABASE` | Database name | `databricks_postgres` |
-| `PGUSER` | Service principal client ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
-| `LAKEBASE_ENDPOINT` | Endpoint path | `projects/usage-limits/branches/main/endpoints/ep-1` |
+| Variable | Description | Source |
+|----------|-------------|--------|
+| `PGHOST` | Lakebase hostname | Auto-injected from `usage-limits-db` |
+| `PGDATABASE` | Database name | Auto-injected from `usage-limits-db` |
+| `PGUSER` | Service principal client ID | Injected at connect time via `WorkspaceClient.config.client_id` |
+| `LAKEBASE_INSTANCE` | Instance name for credential generation | Hardcoded in `app.yml` |
+
+## Credential Generation
+
+The app uses `database.generate_database_credential()` with the instance name
+to get short-lived OAuth tokens for PostgreSQL connections. This is handled
+automatically by `OAuthConnection` in `core/db.py`.
 
 ## Schema Initialization
 
 The app automatically creates tables on first startup via `init_schema()`.
-To initialize manually:
-
-```bash
-cd app && python -m setup.init_schema
-```
 
 ## Tables Created
 
 1. `budget_configs` — Per-user/group budget limits
 2. `default_budgets` — Fallback budget limits
-3. `blacklist` — Users over-budget with expiry tracking
-4. `managed_endpoints` — Endpoints being monitored
-5. `permission_snapshots` — Original user permissions (before revocation)
-6. `audit_log` — Enforcement action history
-7. `app_config` — App settings
+3. `warnings` — Users over-budget with expiry tracking
+4. `audit_log` — Enforcement action history
+5. `app_config` — App settings

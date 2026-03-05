@@ -89,13 +89,18 @@ def discover_system_tables(client, warehouse_id: str) -> str | None:
                 warehouse_id=warehouse_id,
                 statement=sql,
             )
-            if result.status.state == "SUCCEEDED":
+            state = result.status.state if result.status else None
+            state_str = state.value if hasattr(state, "value") else str(state)
+            if state_str == "SUCCEEDED":
                 logger.info("Discovered system table: %s", name)
                 return name
-        except Exception:
-            logger.debug("Probe for %s failed with exception", name)
+            error_msg = getattr(result.status, "error", None)
+            logger.warning("Probe for %s returned state=%s error=%s", name, state, error_msg)
+        except Exception as exc:
+            logger.warning("Probe for %s raised exception: %s", name, exc)
             continue
 
+    logger.info("No system table found after probing all candidates")
     return None
 
 
@@ -112,6 +117,8 @@ def discover_data_sources(client, warehouse_id: str) -> DiscoveryResult:
         if info is not None:
             inference_tables.append(info)
 
+    logger.info("Discovery complete: system_table=%s, inference_tables=%d",
+                system_table, len(inference_tables))
     return DiscoveryResult(
         system_table=system_table,
         inference_tables=inference_tables,

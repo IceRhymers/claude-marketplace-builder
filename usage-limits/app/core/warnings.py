@@ -2,107 +2,91 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
+
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
+from core.models import AuditLog, Warning
 
 logger = logging.getLogger(__name__)
 
 
-def _row_to_dict(description, row) -> dict | None:
-    """Convert a psycopg row tuple to a dict."""
-    if row is None:
-        return None
-    columns = [desc[0] for desc in description]
-    return dict(zip(columns, row))
-
-
-def _rows_to_dicts(description, rows) -> list[dict]:
-    """Convert psycopg rows to list of dicts."""
-    if not description or not rows:
-        return []
-    columns = [desc[0] for desc in description]
-    return [dict(zip(columns, row)) for row in rows]
-
-
 def add_warning(
-    pool,
+    session: Session,
     user_id: str,
     reason: str,
-    token_usage: int,
-    token_limit: int,
+    dollar_usage: float,
+    dollar_limit: float,
     expires_at: datetime,
 ) -> None:
-    """Add a budget warning for a user."""
-    sql = """\
-INSERT INTO warnings (user_id, reason, token_usage, token_limit, expires_at)
-VALUES (%s, %s, %s, %s, %s)
-ON CONFLICT (user_id, reason)
-DO UPDATE SET
-    token_usage = EXCLUDED.token_usage,
-    token_limit = EXCLUDED.token_limit,
-    expires_at = EXCLUDED.expires_at,
-    enforced_at = NOW(),
-    is_active = TRUE
-"""
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (user_id, reason, token_usage, token_limit, expires_at))
-        conn.commit()
+    """Add a budget warning for a user (upsert on user_id + reason)."""
+    stmt = pg_insert(Warning).values(
+        user_id=user_id,
+        reason=reason,
+        dollar_usage=dollar_usage,
+        dollar_limit=dollar_limit,
+        expires_at=expires_at,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["user_id", "reason"],
+        set_={
+            "dollar_usage": stmt.excluded.dollar_usage,
+            "dollar_limit": stmt.excluded.dollar_limit,
+            "expires_at": stmt.excluded.expires_at,
+            "enforced_at": func.now(),
+            "is_active": True,
+        },
+    )
+    session.execute(stmt)
+    session.commit()
+    logger.info("Warning added for user=%s reason=%s", user_id, reason)
 
 
-def get_active_warnings(pool) -> list[dict]:
+def get_active_warnings(session: Session) -> list[dict]:
     """Get all currently active warnings."""
-    sql = "SELECT * FROM warnings WHERE is_active = TRUE"
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            rows = cur.fetchall()
-            return _rows_to_dicts(cur.description, rows)
+    rows = session.query(Warning).filter(Warning.is_active.is_(True)).all()
+    return [r.to_dict() for r in rows]
 
 
-def get_active_warnings_for_user(pool, user_id: str) -> list[dict]:
+def get_active_warnings_for_user(session: Session, user_id: str) -> list[dict]:
     """Get active warnings for a specific user."""
-    sql = "SELECT * FROM warnings WHERE is_active = TRUE AND user_id = %s"
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (user_id,))
-            rows = cur.fetchall()
-            return _rows_to_dicts(cur.description, rows)
+    rows = (
+        session.query(Warning)
+        .filter(Warning.is_active.is_(True), Warning.user_id == user_id)
+        .all()
+    )
+    return [r.to_dict() for r in rows]
 
 
-def get_expired_warnings(pool) -> list[dict]:
+def get_expired_warnings(session: Session) -> list[dict]:
     """Get active warnings that have passed their expiry time."""
-    sql = "SELECT * FROM warnings WHERE is_active = TRUE AND expires_at <= NOW()"
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql)
-            rows = cur.fetchall()
-            return _rows_to_dicts(cur.description, rows)
+    rows = (
+        session.query(Warning)
+        .filter(Warning.is_active.is_(True), Warning.expires_at <= func.now())
+        .all()
+    )
+    return [r.to_dict() for r in rows]
 
 
-def mark_warning_resolved(pool, warning_id: int) -> None:
+def mark_warning_resolved(session: Session, warning_id: int) -> None:
     """Mark a warning as resolved (inactive)."""
-    sql = "UPDATE warnings SET is_active = FALSE, resolved_at = NOW() WHERE id = %s"
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (warning_id,))
-        conn.commit()
+    warning = session.get(Warning, warning_id)
+    if warning is not None:
+        warning.is_active = False
+        warning.resolved_at = func.now()
+        session.commit()
+        logger.info("Warning %d resolved for user=%s", warning_id, warning.user_id)
 
 
 def log_audit_entry(
-    pool,
+    session: Session,
     action: str,
     user_id: str | None = None,
     details: dict | None = None,
 ) -> None:
     """Log an action to the audit trail."""
-    sql = """\
-INSERT INTO audit_log (action, user_id, details)
-VALUES (%s, %s, %s)
-"""
-    details_json = json.dumps(details) if details else None
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (action, user_id, details_json))
-        conn.commit()
+    session.add(AuditLog(action=action, user_id=user_id, details=details))
+    session.commit()

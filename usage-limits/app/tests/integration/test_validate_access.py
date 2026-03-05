@@ -44,22 +44,20 @@ class TestValidateSystemTableAccess:
 class TestValidateLakebaseAccess:
     """Tests for validate_lakebase_access()."""
 
-    def test_succeeds_when_pool_works(self, mock_db_pool, mock_cursor):
+    def test_succeeds_when_session_works(self, mock_session):
         from setup.validate_access import validate_lakebase_access
 
-        mock_cursor.fetchone.return_value = (1,)
-
-        result = validate_lakebase_access(mock_db_pool)
+        result = validate_lakebase_access(mock_session)
 
         assert result is True
 
     def test_fails_on_exception(self):
         from setup.validate_access import validate_lakebase_access
 
-        pool = MagicMock()
-        pool.connection.side_effect = Exception("connection failed")
+        session = MagicMock()
+        session.execute.side_effect = Exception("connection failed")
 
-        result = validate_lakebase_access(pool)
+        result = validate_lakebase_access(session)
 
         assert result is False
 

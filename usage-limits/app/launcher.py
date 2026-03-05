@@ -1,25 +1,35 @@
 """Launch both Streamlit dashboard and FastAPI budget API."""
 
+import logging
+import os
 import subprocess
 import sys
 
 import uvicorn
 
 from core.config import AppConfig
-from core.db import create_pool, init_schema
-from api import app as fastapi_app, set_pool
+from core.db import create_engine_from_config, init_schema, make_session_factory
+from api import app as fastapi_app, set_session_factory
+
+logger = logging.getLogger(__name__)
 
 
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     config = AppConfig.from_env()
-    pool = create_pool(config)
-    init_schema(pool)
-    set_pool(pool)
+    logger.info("Starting usage-limits app")
+    engine = create_engine_from_config(config)
+    init_schema(engine)
+    set_session_factory(make_session_factory(engine))
 
-    # Start Streamlit as subprocess
+    # Start Streamlit on the port Databricks Apps expects
+    app_port = os.environ.get("DATABRICKS_APP_PORT", "8501")
     streamlit_proc = subprocess.Popen([
         sys.executable, "-m", "streamlit", "run", "app.py",
-        "--server.port", "8501", "--server.headless", "true",
+        "--server.port", app_port, "--server.headless", "true",
     ])
 
     try:

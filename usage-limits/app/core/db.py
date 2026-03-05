@@ -1,95 +1,85 @@
-"""Lakebase connection pool and schema initialization."""
+"""Lakebase connection via SQLAlchemy with OAuth token injection."""
 
 from __future__ import annotations
 
-import os
-import psycopg
-from psycopg_pool import ConnectionPool
+import logging
+import uuid
+
+from sqlalchemy import create_engine, event, inspect
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 from databricks.sdk import WorkspaceClient
 
 from core.config import AppConfig
+from core.models import Base
+
+logger = logging.getLogger(__name__)
 
 _w = WorkspaceClient()
 
 
-class OAuthConnection(psycopg.Connection):
-    """psycopg Connection subclass that generates Lakebase OAuth tokens."""
+def create_engine_from_config(config: AppConfig) -> Engine:
+    """Create a SQLAlchemy engine for Lakebase with OAuth token injection.
 
-    @classmethod
-    def connect(cls, conninfo="", **kwargs):
-        endpoint_name = os.environ["LAKEBASE_ENDPOINT"]
-        credential = _w.postgres.generate_database_credential(endpoint=endpoint_name)
-        kwargs["password"] = credential.token
-        return super().connect(conninfo, **kwargs)
+    Uses the ``postgresql+psycopg://`` dialect so psycopg 3 is the underlying
+    driver.  An event listener on ``do_connect`` generates a fresh Lakebase
+    OAuth token for every new physical connection.
+    """
+    logger.info("Creating engine: host=%s database=%s instance=%s",
+                config.pg_host, config.pg_database, config.lakebase_instance)
 
-
-def create_pool(config: AppConfig) -> ConnectionPool:
-    """Create a Lakebase connection pool from app config."""
-    return ConnectionPool(
-        conninfo=config.conninfo,
-        connection_class=OAuthConnection,
-        min_size=1,
-        max_size=10,
-        open=True,
+    url = (
+        f"postgresql+psycopg://{config.pg_host}:5432"
+        f"/{config.pg_database}?sslmode=require"
     )
 
+    engine = create_engine(
+        url,
+        pool_size=1,
+        max_overflow=9,
+        pool_pre_ping=True,
+    )
 
-_SCHEMA_SQL = """\
-CREATE TABLE IF NOT EXISTS budget_configs (
-    id SERIAL PRIMARY KEY,
-    entity_type TEXT NOT NULL CHECK (entity_type IN ('user', 'group')),
-    entity_id TEXT NOT NULL,
-    daily_token_limit BIGINT,
-    weekly_token_limit BIGINT,
-    monthly_token_limit BIGINT,
-    is_admin BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by TEXT,
-    UNIQUE(entity_type, entity_id)
-);
+    instance_name = config.lakebase_instance
 
-CREATE TABLE IF NOT EXISTS default_budgets (
-    id SERIAL PRIMARY KEY,
-    daily_token_limit BIGINT,
-    weekly_token_limit BIGINT,
-    monthly_token_limit BIGINT,
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_by TEXT
-);
+    @event.listens_for(engine, "do_connect")
+    def _inject_token(dialect, conn_rec, cargs, cparams):
+        credential = _w.database.generate_database_credential(
+            request_id=str(uuid.uuid4()),
+            instance_names=[instance_name],
+        )
+        cparams["user"] = _w.config.client_id
+        cparams["password"] = credential.token
+        logger.info("Injected Lakebase OAuth token for instance %s", instance_name)
 
-CREATE TABLE IF NOT EXISTS warnings (
-    id SERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    token_usage BIGINT,
-    token_limit BIGINT,
-    enforced_at TIMESTAMPTZ DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL,
-    resolved_at TIMESTAMPTZ,
-    is_active BOOLEAN DEFAULT TRUE,
-    UNIQUE(user_id, reason)
-);
-
-CREATE TABLE IF NOT EXISTS audit_log (
-    id SERIAL PRIMARY KEY,
-    action TEXT NOT NULL,
-    user_id TEXT,
-    details JSONB,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS app_config (
-    key TEXT PRIMARY KEY,
-    value JSONB NOT NULL,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-"""
+    return engine
 
 
-def init_schema(pool: ConnectionPool) -> None:
-    """Create all application tables (idempotent)."""
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(_SCHEMA_SQL)
-        conn.commit()
+def _migrate_to_dollar_schema(engine: Engine) -> None:
+    """Drop tables that still use the old token-based column names.
+
+    Idempotent: no-op if old columns are already gone.
+    """
+    insp = inspect(engine)
+    old_token_columns = {"daily_token_limit", "weekly_token_limit", "monthly_token_limit",
+                         "token_usage", "token_limit"}
+
+    for table_name in ("budget_configs", "default_budgets", "warnings"):
+        if not insp.has_table(table_name):
+            continue
+        columns = {c["name"] for c in insp.get_columns(table_name)}
+        if columns & old_token_columns:
+            logger.info("Migrating table %s: dropping old token-based schema", table_name)
+            Base.metadata.tables[table_name].drop(engine)
+
+
+def init_schema(engine: Engine) -> None:
+    """Create all application tables (idempotent), migrating old schema if needed."""
+    logger.info("Initializing database schema")
+    _migrate_to_dollar_schema(engine)
+    Base.metadata.create_all(engine)
+
+
+def make_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Return a sessionmaker bound to *engine*."""
+    return sessionmaker(bind=engine)

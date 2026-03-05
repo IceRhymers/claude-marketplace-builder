@@ -1,6 +1,7 @@
 """Tests for core/budget.py — budget evaluation and period boundaries."""
 
 import pytest
+from unittest.mock import MagicMock
 from datetime import datetime, timezone, date
 
 
@@ -68,12 +69,12 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=1000,
-            weekly_usage=5000,
-            monthly_usage=10000,
-            daily_limit=50000,
-            weekly_limit=200000,
-            monthly_limit=500000,
+            daily_usage=10.0,
+            weekly_usage=50.0,
+            monthly_usage=100.0,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
         )
 
         assert result.exceeded is False
@@ -83,12 +84,12 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=60000,
-            weekly_usage=60000,
-            monthly_usage=60000,
-            daily_limit=50000,
-            weekly_limit=200000,
-            monthly_limit=500000,
+            daily_usage=52.30,
+            weekly_usage=52.30,
+            monthly_usage=52.30,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
         )
 
         assert result.exceeded is True
@@ -99,12 +100,12 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=1000,
-            weekly_usage=250000,
-            monthly_usage=250000,
-            daily_limit=50000,
-            weekly_limit=200000,
-            monthly_limit=500000,
+            daily_usage=10.0,
+            weekly_usage=110.0,
+            monthly_usage=110.0,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
         )
 
         assert result.exceeded is True
@@ -115,12 +116,12 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=1000,
-            weekly_usage=5000,
-            monthly_usage=600000,
-            daily_limit=50000,
-            weekly_limit=200000,
-            monthly_limit=500000,
+            daily_usage=10.0,
+            weekly_usage=50.0,
+            monthly_usage=350.0,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
         )
 
         assert result.exceeded is True
@@ -131,12 +132,12 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=60000,
-            weekly_usage=250000,
-            monthly_usage=600000,
-            daily_limit=50000,
-            weekly_limit=200000,
-            monthly_limit=500000,
+            daily_usage=55.0,
+            weekly_usage=110.0,
+            monthly_usage=350.0,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
         )
 
         assert result.exceeded is True
@@ -146,9 +147,9 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=999999999,
-            weekly_usage=999999999,
-            monthly_usage=999999999,
+            daily_usage=999999.99,
+            weekly_usage=999999.99,
+            monthly_usage=999999.99,
             daily_limit=None,
             weekly_limit=None,
             monthly_limit=None,
@@ -161,18 +162,18 @@ class TestEvaluateBudget:
         from core.budget import evaluate_budget
 
         result = evaluate_budget(
-            daily_usage=60000,
-            weekly_usage=5000,
-            monthly_usage=10000,
-            daily_limit=50000,
-            weekly_limit=200000,
-            monthly_limit=500000,
+            daily_usage=52.30,
+            weekly_usage=50.0,
+            monthly_usage=100.0,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
         )
 
         assert len(result.violations) == 1
         v = result.violations[0]
-        assert v.usage == 60000
-        assert v.limit == 50000
+        assert v.usage == 52.30
+        assert v.limit == 50.0
         assert v.reason == "daily_limit"
 
 
@@ -180,70 +181,61 @@ class TestEvaluateBudget:
 class TestGetUserBudget:
     """Tests for get_user_budget()."""
 
-    def test_returns_user_specific_budget(self, mock_db_pool, mock_cursor):
+    def test_returns_user_specific_budget(self, mock_session):
         from core.budget import get_user_budget
 
-        mock_cursor.fetchone.return_value = (
-            1, "user", "user1@example.com", 50000, 200000, 500000, False
-        )
-        mock_cursor.description = [
-            ("id",), ("entity_type",), ("entity_id",),
-            ("daily_token_limit",), ("weekly_token_limit",),
-            ("monthly_token_limit",), ("is_admin",),
-        ]
+        budget_mock = MagicMock()
+        budget_mock.to_dict.return_value = {
+            "id": 1, "entity_type": "user", "entity_id": "user1@example.com",
+            "daily_dollar_limit": 50.0, "weekly_dollar_limit": 100.0,
+            "monthly_dollar_limit": 300.0, "is_admin": False,
+        }
+        mock_session.query.return_value.filter.return_value.first.return_value = budget_mock
 
-        result = get_user_budget(mock_db_pool, "user1@example.com")
+        result = get_user_budget(mock_session, "user1@example.com")
 
         assert result is not None
-        assert result["daily_token_limit"] == 50000
+        assert result["daily_dollar_limit"] == 50.0
         assert result["entity_id"] == "user1@example.com"
 
-    def test_falls_back_to_default(self, mock_db_pool, mock_cursor):
+    def test_falls_back_to_default(self, mock_session):
         from core.budget import get_user_budget
 
-        call_count = 0
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        default_mock = MagicMock()
+        default_mock.to_dict.return_value = {
+            "id": 1, "daily_dollar_limit": 50.0,
+            "weekly_dollar_limit": 100.0, "monthly_dollar_limit": 300.0,
+        }
+        mock_session.query.return_value.order_by.return_value.first.return_value = default_mock
 
-        def fetchone_side_effect():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return None  # No per-user config
-            else:
-                return (1, 100000, 400000, 1000000)  # Default budget
-
-        mock_cursor.fetchone.side_effect = fetchone_side_effect
-        mock_cursor.description = [
-            ("id",), ("daily_token_limit",),
-            ("weekly_token_limit",), ("monthly_token_limit",),
-        ]
-
-        result = get_user_budget(mock_db_pool, "unknown@example.com")
+        result = get_user_budget(mock_session, "unknown@example.com")
 
         assert result is not None
-        assert result["daily_token_limit"] == 100000
+        assert result["daily_dollar_limit"] == 50.0
 
-    def test_returns_none_when_no_budget(self, mock_db_pool, mock_cursor):
+    def test_returns_none_when_no_budget(self, mock_session):
         from core.budget import get_user_budget
 
-        mock_cursor.fetchone.return_value = None
+        mock_session.query.return_value.filter.return_value.first.return_value = None
+        mock_session.query.return_value.order_by.return_value.first.return_value = None
 
-        result = get_user_budget(mock_db_pool, "unknown@example.com")
+        result = get_user_budget(mock_session, "unknown@example.com")
 
         assert result is None
 
-    def test_admin_flag_returned(self, mock_db_pool, mock_cursor):
+    def test_admin_flag_returned(self, mock_session):
         from core.budget import get_user_budget
 
-        mock_cursor.fetchone.return_value = (
-            2, "user", "admin@example.com", 50000, 200000, 500000, True
-        )
-        mock_cursor.description = [
-            ("id",), ("entity_type",), ("entity_id",),
-            ("daily_token_limit",), ("weekly_token_limit",),
-            ("monthly_token_limit",), ("is_admin",),
-        ]
+        budget_mock = MagicMock()
+        budget_mock.to_dict.return_value = {
+            "id": 2, "entity_type": "user", "entity_id": "admin@example.com",
+            "daily_dollar_limit": 50.0, "weekly_dollar_limit": 100.0,
+            "monthly_dollar_limit": 300.0, "is_admin": True,
+        }
+        mock_session.query.return_value.filter.return_value.first.return_value = budget_mock
 
-        result = get_user_budget(mock_db_pool, "admin@example.com")
+        result = get_user_budget(mock_session, "admin@example.com")
 
         assert result["is_admin"] is True
 
@@ -252,37 +244,26 @@ class TestGetUserBudget:
 class TestSaveBudgetConfig:
     """Tests for save_budget_config()."""
 
-    def test_inserts_new_budget(self, mock_db_pool, mock_cursor):
+    def test_executes_upsert(self, mock_session):
         from core.budget import save_budget_config
 
         save_budget_config(
-            mock_db_pool, entity_type="user", entity_id="user1@example.com",
-            daily_limit=50000, weekly_limit=200000, monthly_limit=500000, is_admin=False,
+            mock_session, entity_type="user", entity_id="user1@example.com",
+            daily_limit=50.0, weekly_limit=100.0, monthly_limit=300.0, is_admin=False,
         )
 
-        sql = mock_cursor.execute.call_args[0][0]
-        assert "budget_configs" in sql
-
-    def test_updates_existing_budget(self, mock_db_pool, mock_cursor):
-        from core.budget import save_budget_config
-
-        save_budget_config(
-            mock_db_pool, entity_type="user", entity_id="user1@example.com",
-            daily_limit=50000, weekly_limit=200000, monthly_limit=500000, is_admin=False,
-        )
-
-        sql = mock_cursor.execute.call_args[0][0]
-        assert "ON CONFLICT" in sql
+        mock_session.execute.assert_called_once()
+        mock_session.commit.assert_called_once()
 
 
 @pytest.mark.unit
 class TestSaveDefaultBudget:
     """Tests for save_default_budget()."""
 
-    def test_saves_default(self, mock_db_pool, mock_cursor):
+    def test_saves_default(self, mock_session):
         from core.budget import save_default_budget
 
-        save_default_budget(mock_db_pool, daily_limit=100000, weekly_limit=400000, monthly_limit=1000000)
+        save_default_budget(mock_session, daily_limit=50.0, weekly_limit=100.0, monthly_limit=300.0)
 
-        sql = mock_cursor.execute.call_args[0][0]
-        assert "default_budgets" in sql
+        mock_session.add.assert_called_once()
+        mock_session.commit.assert_called_once()

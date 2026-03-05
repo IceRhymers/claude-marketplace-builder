@@ -40,12 +40,15 @@ FROM {otel_table}
   AND sum IS NOT NULL
 ORDER BY event_time DESC
 """
+    logger.info("Executing OTEL metrics query on warehouse %s", warehouse_id)
     try:
         result = client.statement_execution.execute_statement(
             warehouse_id=warehouse_id,
             statement=sql,
         )
-        return _parse_query_result(result, int_columns=["token_count"])
+        rows = _parse_query_result(result, int_columns=["token_count"])
+        logger.info("OTEL metrics query returned %d rows", len(rows))
+        return rows
     except Exception:
         logger.exception("OTEL query failed")
         return []
@@ -69,12 +72,15 @@ WHERE from_unixtime(sum.time_unix_nano / 1000000000) >= CURRENT_DATE - INTERVAL 
 GROUP BY sum.attributes['user.id']
 ORDER BY total_value DESC
 """
+    logger.info("Executing OTEL user summary query on warehouse %s", warehouse_id)
     try:
         result = client.statement_execution.execute_statement(
             warehouse_id=warehouse_id,
             statement=sql,
         )
-        return _parse_query_result(result, int_columns=["total_value", "metric_count"])
+        rows = _parse_query_result(result, int_columns=["total_value", "metric_count"])
+        logger.info("OTEL user summary query returned %d rows", len(rows))
+        return rows
     except Exception:
         logger.exception("OTEL user summary query failed")
         return []

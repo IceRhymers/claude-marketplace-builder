@@ -14,8 +14,7 @@ class TestAppConfigFromEnv:
 
         assert config.pg_host == "test-host.cloud.databricks.com"
         assert config.pg_database == "databricks_postgres"
-        assert config.pg_user == "test-client-id"
-        assert config.lakebase_endpoint == "projects/test/branches/main/endpoints/ep-1"
+        assert config.lakebase_instance == "usage-limits"
         assert config.sql_warehouse_id == "test-warehouse-id"
         assert config.evaluation_interval_minutes == 5
         assert config.budget_api_port == 8502
@@ -65,6 +64,5 @@ class TestAppConfigFromEnv:
         conninfo = config.conninfo
 
         assert "dbname=databricks_postgres" in conninfo
-        assert "user=test-client-id" in conninfo
         assert "host=test-host.cloud.databricks.com" in conninfo
         assert "sslmode=require" in conninfo

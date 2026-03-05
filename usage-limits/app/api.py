@@ -6,6 +6,7 @@ import logging
 
 from fastapi import FastAPI, Header, HTTPException
 from databricks.sdk import WorkspaceClient
+from sqlalchemy.orm import sessionmaker, Session
 
 from core.warnings import get_active_warnings_for_user
 
@@ -13,20 +14,20 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Usage Limits Budget API")
 
-_pool = None
+_session_factory: sessionmaker[Session] | None = None
 
 
-def set_pool(pool):
-    """Set the database pool for the API."""
-    global _pool
-    _pool = pool
+def set_session_factory(factory: sessionmaker[Session]) -> None:
+    """Set the SQLAlchemy session factory for the API."""
+    global _session_factory
+    _session_factory = factory
 
 
-def get_pool():
-    """Get the database pool."""
-    if _pool is None:
-        raise RuntimeError("Pool not initialized")
-    return _pool
+def get_session() -> Session:
+    """Create a new database session."""
+    if _session_factory is None:
+        raise RuntimeError("Session factory not initialized")
+    return _session_factory()
 
 
 @app.get("/api/check-budget")
@@ -48,11 +49,24 @@ def check_budget(authorization: str = Header(default=None)):
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    pool = get_pool()
-    warnings = get_active_warnings_for_user(pool, user_email)
+    logger.info("Budget check request for user=%s", user_email)
+
+    session = get_session()
+    try:
+        warnings = get_active_warnings_for_user(session, user_email)
+    finally:
+        session.close()
 
     if warnings:
-        reasons = [w["reason"] for w in warnings]
-        return {"allowed": False, "reason": "; ".join(reasons)}
+        first = warnings[0]
+        reason = first["reason"]
+        logger.info("Budget check denied for user=%s: %s", user_email, reason)
+        return {
+            "allowed": False,
+            "reason": reason,
+            "usage": float(first.get("dollar_usage") or 0),
+            "limit": float(first.get("dollar_limit") or 0),
+        }
 
+    logger.info("Budget check allowed for user=%s", user_email)
     return {"allowed": True}
