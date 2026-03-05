@@ -3,10 +3,11 @@ name: tdd-databricks-app
 description: >
   Enforces test-driven development workflow when building or modifying Databricks
   app code in this marketplace repo. Auto-triggers when creating Python modules
-  under any plugins/*/skills/*/app/ directory. Requires writing failing tests
-  before implementation. Provides mocking patterns for Databricks SDK, Lakebase,
-  and SQL warehouse dependencies. Use when writing Python app code, adding new
-  modules, or implementing features in a Databricks app within this repo.
+  under any app/ directory (FastAPI routers, React frontend, core modules).
+  Requires writing failing tests before implementation. Provides mocking patterns
+  for Databricks SDK, Lakebase/SQLAlchemy, FastAPI TestClient, and SQL warehouse
+  dependencies. Use when writing Python app code, adding new modules, or
+  implementing features in a Databricks app within this repo.
 allowed-tools: Read, Grep, Glob, Bash, Write, Edit
 ---
 
@@ -80,7 +81,7 @@ class TestMyFunction:
 Run the test to confirm it FAILS:
 
 ```bash
-cd plugins/databricks-skills/skills/<app-name>/app && python -m pytest tests/unit/test_<module>.py -v 2>&1 | head -30
+cd usage-limits/app && python -m pytest tests/unit/test_<module>.py -v 2>&1 | head -30
 ```
 
 **Expected output:** `FAILED` or `ERROR` (ImportError is acceptable at red phase).
@@ -92,7 +93,7 @@ cd plugins/databricks-skills/skills/<app-name>/app && python -m pytest tests/uni
 Write the minimum code to make the test pass. No more, no less.
 
 ```bash
-cd plugins/databricks-skills/skills/<app-name>/app && python -m pytest tests/unit/test_<module>.py -v
+cd usage-limits/app && python -m pytest tests/unit/test_<module>.py -v
 ```
 
 **Expected output:** All tests `PASSED`.
@@ -114,7 +115,7 @@ With tests green, improve the code:
 Run tests after EVERY refactor change:
 
 ```bash
-cd plugins/databricks-skills/skills/<app-name>/app && python -m pytest tests/unit/test_<module>.py -v
+cd usage-limits/app && python -m pytest tests/unit/test_<module>.py -v
 ```
 
 ### Step 4: Expand Coverage
@@ -131,7 +132,7 @@ Repeat the red-green-refactor cycle for each new test.
 Before considering the module complete:
 
 ```bash
-cd plugins/databricks-skills/skills/<app-name>/app && python -m pytest tests/ -v --tb=short
+cd usage-limits/app && python -m pytest tests/ -v --tb=short
 ```
 
 All tests must pass. No exceptions.
@@ -178,11 +179,18 @@ Every source file MUST have a corresponding test file:
 | `core/db.py` | `tests/integration/test_db.py` | integration |
 | `core/usage.py` | `tests/unit/test_usage.py` | unit |
 | `core/budget.py` | `tests/unit/test_budget.py` | unit |
-| `core/enforcer.py` | `tests/unit/test_enforcer.py` | unit |
+| `core/evaluator.py` | `tests/unit/test_evaluator.py` | unit |
 | `core/otel.py` | `tests/unit/test_otel.py` | unit |
+| `deps.py` | `tests/unit/test_deps.py` | unit |
+| `routers/overview.py` | `tests/unit/test_router_overview.py` | unit |
+| `routers/users.py` | `tests/unit/test_router_users.py` | unit |
+| `routers/budgets.py` | `tests/unit/test_router_budgets.py` | unit |
+| `routers/warnings.py` | `tests/unit/test_router_warnings.py` | unit |
+| `routers/audit.py` | `tests/unit/test_router_audit.py` | unit |
+| `routers/otel.py` | `tests/unit/test_router_otel.py` | unit |
+| `schemas/*.py` | *(tested implicitly via router tests)* | — |
 | `setup/init_schema.py` | `tests/integration/test_db.py` | integration |
 | `setup/validate_access.py` | `tests/integration/test_validate_access.py` | integration |
-| `pages/*.py` | *(no dedicated tests — test the data functions they call)* | — |
 
 ## Mocking Strategy
 
@@ -225,7 +233,7 @@ See [ci-patterns.md](ci-patterns.md) for:
 | **Mock not applied** | `@patch` target must match the import path in the SOURCE file, not the test file |
 | **Lakebase pool mock leaking** | Use `mock_db_pool` fixture per-test, not `autouse=True` |
 | **Async test issues** | Databricks SDK is synchronous — no async test infrastructure needed |
-| **Streamlit import errors** | Never import `streamlit` in unit tests; pages are tested via their data functions |
+| **FastAPI TestClient setup** | Use `TestClient(app)` with `app.dependency_overrides[get_db] = lambda: mock_session` to inject mocks |
 | **Test order dependency** | All tests must be independent; use `pytest-randomly` to detect coupling |
 | **Slow tests** | Mark integration tests with `@pytest.mark.integration`; run `pytest -m unit` for fast feedback |
 

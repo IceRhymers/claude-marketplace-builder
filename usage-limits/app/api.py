@@ -1,37 +1,26 @@
-"""FastAPI budget check endpoint for Claude Code hook integration."""
+"""Budget check API endpoint for Claude Code hook integration."""
 
 from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from databricks.sdk import WorkspaceClient
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 
 from core.warnings import get_active_warnings_for_user
+from deps import get_db
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Usage Limits Budget API")
-
-_session_factory: sessionmaker[Session] | None = None
+budget_router = APIRouter(tags=["budget-check"])
 
 
-def set_session_factory(factory: sessionmaker[Session]) -> None:
-    """Set the SQLAlchemy session factory for the API."""
-    global _session_factory
-    _session_factory = factory
-
-
-def get_session() -> Session:
-    """Create a new database session."""
-    if _session_factory is None:
-        raise RuntimeError("Session factory not initialized")
-    return _session_factory()
-
-
-@app.get("/api/check-budget")
-def check_budget(authorization: str = Header(default=None)):
+@budget_router.get("/api/check-budget", operation_id="checkBudget")
+def check_budget(
+    authorization: str = Header(default=None),
+    session: Session = Depends(get_db),
+):
     """Check if a user is within their budget.
 
     Resolves user identity from the Databricks token in the Authorization header.
@@ -51,11 +40,7 @@ def check_budget(authorization: str = Header(default=None)):
 
     logger.info("Budget check request for user=%s", user_email)
 
-    session = get_session()
-    try:
-        warnings = get_active_warnings_for_user(session, user_email)
-    finally:
-        session.close()
+    warnings = get_active_warnings_for_user(session, user_email)
 
     if warnings:
         first = warnings[0]

@@ -130,28 +130,29 @@ def make_query_result():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_cursor():
-    """Mock psycopg cursor with configurable return values."""
-    cursor = MagicMock()
-    cursor.fetchall.return_value = []
-    cursor.fetchone.return_value = None
-    cursor.rowcount = 0
-    cursor.description = None
-    return cursor
+def mock_session():
+    """Mock SQLAlchemy Session for unit tests."""
+    session = MagicMock()
+    session.query.return_value.filter.return_value.all.return_value = []
+    session.query.return_value.filter.return_value.first.return_value = None
+    session.query.return_value.order_by.return_value.first.return_value = None
+    session.get.return_value = None
+    return session
 
 
 @pytest.fixture
-def mock_db_pool(mock_cursor):
-    """Mock Lakebase ConnectionPool with context-manager support."""
-    pool = MagicMock()
-    mock_conn = MagicMock()
-    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
-    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+def test_client(mock_session, mock_workspace_client):
+    """FastAPI TestClient with mocked dependencies."""
+    from main import app
+    from deps import get_db, get_config, get_client
 
-    pool.connection.return_value.__enter__ = MagicMock(return_value=mock_conn)
-    pool.connection.return_value.__exit__ = MagicMock(return_value=False)
-
-    return pool
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[get_config] = lambda: MagicMock(
+        sql_warehouse_id="test-wh", otel_table=None,
+    )
+    app.dependency_overrides[get_client] = lambda: mock_workspace_client
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -189,18 +190,18 @@ def sample_budget_config():
             "id": 1,
             "entity_type": "user",
             "entity_id": "user1@example.com",
-            "daily_token_limit": 50000,
-            "weekly_token_limit": 200000,
-            "monthly_token_limit": 500000,
+            "daily_dollar_limit": 50.00,
+            "weekly_dollar_limit": 100.00,
+            "monthly_dollar_limit": 300.00,
             "is_admin": False,
         },
         {
             "id": 2,
             "entity_type": "user",
             "entity_id": "admin@example.com",
-            "daily_token_limit": 50000,
-            "weekly_token_limit": 200000,
-            "monthly_token_limit": 500000,
+            "daily_dollar_limit": 50.00,
+            "weekly_dollar_limit": 100.00,
+            "monthly_dollar_limit": 300.00,
             "is_admin": True,
         },
     ]
@@ -210,9 +211,9 @@ def sample_budget_config():
 def sample_default_budget():
     """Default budget applied when no per-user config exists."""
     return {
-        "daily_token_limit": 100000,
-        "weekly_token_limit": 400000,
-        "monthly_token_limit": 1000000,
+        "daily_dollar_limit": 50.00,
+        "weekly_dollar_limit": 100.00,
+        "monthly_dollar_limit": 300.00,
     }
 ```
 

@@ -197,6 +197,64 @@ def test_config_loads_from_env(monkeypatch):
     assert config.data_source == "ai_gateway"
 ```
 
+## 6. Mocking FastAPI Dependencies
+
+Use `app.dependency_overrides` to inject mocks into route handlers via `Depends()`:
+
+```python
+from fastapi.testclient import TestClient
+from unittest.mock import MagicMock
+
+from main import app
+from deps import get_db, get_config, get_client
+
+@pytest.fixture
+def test_client(mock_session):
+    """Create a TestClient with mocked dependencies."""
+    app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[get_config] = lambda: MagicMock(
+        sql_warehouse_id="test-wh", otel_table=None
+    )
+    app.dependency_overrides[get_client] = lambda: MagicMock()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+def test_get_overview_metrics(test_client, mock_session):
+    """Test overview metrics endpoint with mocked session."""
+    # Configure mock_session to return expected data
+    mock_session.query.return_value.count.return_value = 5
+
+    response = test_client.get("/api/overview/metrics")
+    assert response.status_code == 200
+```
+
+### Mocking SQLAlchemy Session (not raw psycopg)
+
+The app uses SQLAlchemy ORM, so mock `Session` methods:
+
+```python
+from unittest.mock import MagicMock
+from core.models import BudgetConfig
+
+@pytest.fixture
+def mock_session():
+    """Mock SQLAlchemy Session for unit tests."""
+    session = MagicMock()
+    # Chain query().filter().all() etc.
+    session.query.return_value.filter.return_value.all.return_value = []
+    session.query.return_value.filter.return_value.first.return_value = None
+    session.get.return_value = None
+    return session
+
+def test_get_active_warnings(mock_session):
+    from core.warnings import get_active_warnings
+    mock_warning = MagicMock()
+    mock_warning.to_dict.return_value = {"id": 1, "user_id": "u@e.com", "reason": "daily_limit"}
+    session.query.return_value.filter.return_value.all.return_value = [mock_warning]
+    result = get_active_warnings(mock_session)
+    assert len(result) == 1
+```
+
 ## Anti-Patterns
 
 **Do NOT mock `datetime.now()` globally.** Instead, pass time as a parameter:
