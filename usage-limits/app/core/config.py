@@ -15,6 +15,7 @@ class AppConfig:
     lakebase_instance: str
     sql_warehouse_id: str
     evaluation_interval_minutes: int
+    user_sync_interval_minutes: int
     budget_api_port: int
     otel_table: str | None
 
@@ -43,6 +44,9 @@ class AppConfig:
             sql_warehouse_id=os.environ["SQL_WAREHOUSE_ID"],
             evaluation_interval_minutes=int(
                 os.environ.get("EVALUATION_INTERVAL_MINUTES", "5")
+            ),
+            user_sync_interval_minutes=int(
+                os.environ.get("USER_SYNC_INTERVAL_MINUTES", "5")
             ),
             budget_api_port=int(
                 os.environ.get("BUDGET_API_PORT", "8502")

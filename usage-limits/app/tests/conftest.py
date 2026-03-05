@@ -22,6 +22,7 @@ def env_vars(monkeypatch):
     monkeypatch.setenv("LAKEBASE_INSTANCE", "usage-limits")
     monkeypatch.setenv("SQL_WAREHOUSE_ID", "test-warehouse-id")
     monkeypatch.setenv("EVALUATION_INTERVAL_MINUTES", "5")
+    monkeypatch.setenv("USER_SYNC_INTERVAL_MINUTES", "5")
     monkeypatch.setenv("OTEL_TABLE", "")
 
 

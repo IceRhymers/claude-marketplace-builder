@@ -1,7 +1,7 @@
 """Tests for core/budget.py — budget evaluation and period boundaries."""
 
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone, date
 
 
@@ -267,3 +267,98 @@ class TestSaveDefaultBudget:
 
         mock_session.add.assert_called_once()
         mock_session.commit.assert_called_once()
+
+
+@pytest.mark.unit
+class TestSyncUserBudgets:
+    """Tests for sync_user_budgets()."""
+
+    @patch("core.budget.save_budget_config")
+    @patch("core.budget.get_existing_budget_user_ids")
+    @patch("core.budget.get_default_budget_row")
+    def test_creates_budget_for_new_user(self, mock_default, mock_existing, mock_save, mock_session):
+        default = MagicMock()
+        default.daily_dollar_limit = 50.0
+        default.weekly_dollar_limit = 100.0
+        default.monthly_dollar_limit = 300.0
+        mock_default.return_value = default
+        mock_existing.return_value = set()
+
+        from core.budget import sync_user_budgets
+        result = sync_user_budgets(mock_session, ["new@example.com"])
+
+        mock_save.assert_called_once_with(
+            mock_session,
+            entity_type="user",
+            entity_id="new@example.com",
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
+        )
+        assert result == ["new@example.com"]
+
+    @patch("core.budget.save_budget_config")
+    @patch("core.budget.get_existing_budget_user_ids")
+    @patch("core.budget.get_default_budget_row")
+    def test_skips_existing_user(self, mock_default, mock_existing, mock_save, mock_session):
+        default = MagicMock()
+        default.daily_dollar_limit = 50.0
+        default.weekly_dollar_limit = 100.0
+        default.monthly_dollar_limit = 300.0
+        mock_default.return_value = default
+        mock_existing.return_value = {"existing@example.com"}
+
+        from core.budget import sync_user_budgets
+        result = sync_user_budgets(mock_session, ["existing@example.com"])
+
+        mock_save.assert_not_called()
+        assert result == []
+
+    @patch("core.budget.save_budget_config")
+    @patch("core.budget.get_existing_budget_user_ids")
+    @patch("core.budget.get_default_budget_row")
+    def test_skips_when_no_default(self, mock_default, mock_existing, mock_save, mock_session):
+        mock_default.return_value = None
+
+        from core.budget import sync_user_budgets
+        result = sync_user_budgets(mock_session, ["user@example.com"])
+
+        mock_existing.assert_not_called()
+        mock_save.assert_not_called()
+        assert result == []
+
+    @patch("core.budget.save_budget_config")
+    @patch("core.budget.get_existing_budget_user_ids")
+    @patch("core.budget.get_default_budget_row")
+    def test_skips_when_all_null_limits(self, mock_default, mock_existing, mock_save, mock_session):
+        default = MagicMock()
+        default.daily_dollar_limit = None
+        default.weekly_dollar_limit = None
+        default.monthly_dollar_limit = None
+        mock_default.return_value = default
+
+        from core.budget import sync_user_budgets
+        result = sync_user_budgets(mock_session, ["user@example.com"])
+
+        mock_existing.assert_not_called()
+        mock_save.assert_not_called()
+        assert result == []
+
+    @patch("core.budget.save_budget_config")
+    @patch("core.budget.get_existing_budget_user_ids")
+    @patch("core.budget.get_default_budget_row")
+    def test_returns_new_emails(self, mock_default, mock_existing, mock_save, mock_session):
+        default = MagicMock()
+        default.daily_dollar_limit = 50.0
+        default.weekly_dollar_limit = 100.0
+        default.monthly_dollar_limit = 300.0
+        mock_default.return_value = default
+        mock_existing.return_value = {"existing@example.com"}
+
+        from core.budget import sync_user_budgets
+        result = sync_user_budgets(mock_session, [
+            "existing@example.com", "new1@example.com", "new2@example.com",
+        ])
+
+        assert result == ["new1@example.com", "new2@example.com"]
+        assert mock_save.call_count == 2

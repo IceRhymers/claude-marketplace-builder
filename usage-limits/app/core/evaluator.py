@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from core.usage import get_dollar_usage, upsert_usage_snapshots
-from core.budget import evaluate_budget, get_user_budget, get_period_boundaries
+from core.usage import get_dollar_usage, get_distinct_users, upsert_usage_snapshots
+from core.budget import evaluate_budget, get_user_budget, get_period_boundaries, sync_user_budgets
 from core.warnings import (
     add_warning,
     get_active_warnings,
@@ -101,3 +101,18 @@ def run_evaluation_cycle(client, session: Session, warehouse_id: str) -> None:
             user_id=entry["user_id"],
             details={"reason": entry["reason"]},
         )
+
+
+def run_user_sync_cycle(client, session: Session, warehouse_id: str) -> None:
+    """Discover AI Gateway users and ensure each has a budget_configs row."""
+    logger.info("Starting user sync cycle")
+    discovered = get_distinct_users(client, warehouse_id)
+    newly_synced = sync_user_budgets(session, discovered)
+    for email in newly_synced:
+        log_audit_entry(
+            session,
+            action="auto_assign_budget",
+            user_id=email,
+            details={"source": "ai_gateway_sync"},
+        )
+    logger.info("User sync complete: %d discovered, %d new", len(discovered), len(newly_synced))

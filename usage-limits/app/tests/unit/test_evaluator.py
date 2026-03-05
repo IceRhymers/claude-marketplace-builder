@@ -233,3 +233,45 @@ class TestRunEvaluationCycle:
         run_evaluation_cycle(client, session, "wh-id")
 
         mock_add_warning.assert_not_called()
+
+
+@pytest.mark.unit
+class TestRunUserSyncCycle:
+    """Tests for run_user_sync_cycle()."""
+
+    @patch("core.evaluator.log_audit_entry")
+    @patch("core.evaluator.sync_user_budgets")
+    @patch("core.evaluator.get_distinct_users")
+    def test_syncs_new_users_and_audits(self, mock_discover, mock_sync, mock_audit):
+        client = MagicMock()
+        session = MagicMock()
+
+        mock_discover.return_value = ["a@example.com", "b@example.com"]
+        mock_sync.return_value = ["b@example.com"]
+
+        from core.evaluator import run_user_sync_cycle
+        run_user_sync_cycle(client, session, "wh-id")
+
+        mock_discover.assert_called_once_with(client, "wh-id")
+        mock_sync.assert_called_once_with(session, ["a@example.com", "b@example.com"])
+        mock_audit.assert_called_once_with(
+            session,
+            action="auto_assign_budget",
+            user_id="b@example.com",
+            details={"source": "ai_gateway_sync"},
+        )
+
+    @patch("core.evaluator.log_audit_entry")
+    @patch("core.evaluator.sync_user_budgets")
+    @patch("core.evaluator.get_distinct_users")
+    def test_no_new_users_no_audit(self, mock_discover, mock_sync, mock_audit):
+        client = MagicMock()
+        session = MagicMock()
+
+        mock_discover.return_value = ["a@example.com"]
+        mock_sync.return_value = []
+
+        from core.evaluator import run_user_sync_cycle
+        run_user_sync_cycle(client, session, "wh-id")
+
+        mock_audit.assert_not_called()

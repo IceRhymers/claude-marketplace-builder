@@ -66,6 +66,19 @@ def _execute_usage_query(client, warehouse_id: str, sql: str) -> list[dict]:
         return []
 
 
+def get_distinct_users(client, warehouse_id: str) -> list[str]:
+    """Get distinct user emails from AI Gateway usage in the last 30 days."""
+    sql = """\
+SELECT DISTINCT requester
+FROM system.ai_gateway.usage
+WHERE requester IS NOT NULL
+  AND event_time >= CURRENT_DATE - INTERVAL 30 DAY
+ORDER BY requester
+"""
+    rows = _execute_usage_query(client, warehouse_id, sql)
+    return [row["requester"] for row in rows if row.get("requester")]
+
+
 def get_dollar_usage(client, warehouse_id: str) -> list[dict]:
     """Get per-user dollar costs over 1d/7d/30d windows using pricing SQL."""
     sql = build_usage_cost_query()

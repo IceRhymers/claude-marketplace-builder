@@ -80,7 +80,10 @@ function DefaultBudgetForm() {
 
   const mutation = useMutation({
     mutationFn: saveDefaultBudget,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["default-budget"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["default-budget"] });
+      qc.invalidateQueries({ queryKey: ["user-budget"] });
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {

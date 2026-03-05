@@ -86,7 +86,7 @@ def evaluate_budget(
     ]
 
     for reason, usage, limit in checks:
-        if limit is not None and usage > limit:
+        if limit is not None and (limit == 0 or usage > limit):
             violations.append(BudgetViolation(reason=reason, usage=usage, limit=limit))
 
     return BudgetResult(exceeded=len(violations) > 0, violations=violations)
@@ -103,19 +103,21 @@ def get_user_budget(session: Session, user_email: str) -> dict | None:
         .first()
     )
     if row is not None:
-        logger.debug("Found per-user budget for %s", user_email)
+        logger.info("Found per-user budget for %s", user_email)
         return row.to_dict()
 
-    default = (
-        session.query(DefaultBudget)
-        .order_by(DefaultBudget.id.desc())
-        .first()
-    )
+    default = get_default_budget_row(session)
     if default is not None:
-        logger.debug("Using default budget for %s", user_email)
-        return default.to_dict()
+        logger.info("Using default budget for %s (default_budget_id=%s)", user_email, default.id)
+        d = default.to_dict()
+        d["entity_type"] = "default"
+        d["entity_id"] = user_email
+        d["is_admin"] = False
+        d["created_at"] = None
+        d["created_by"] = None
+        return d
 
-    logger.debug("No budget found for %s", user_email)
+    logger.info("No budget found for %s (no per-user, no default)", user_email)
     return None
 
 
@@ -150,6 +152,62 @@ def save_budget_config(
     )
     session.execute(stmt)
     session.commit()
+
+
+def get_default_budget_row(session: Session) -> DefaultBudget | None:
+    """Return the most recent default budget row, or None."""
+    return (
+        session.query(DefaultBudget)
+        .order_by(DefaultBudget.id.desc())
+        .first()
+    )
+
+
+def get_existing_budget_user_ids(session: Session) -> set[str]:
+    """Return the set of entity_ids that already have a per-user budget config."""
+    rows = (
+        session.query(BudgetConfig.entity_id)
+        .filter(BudgetConfig.entity_type == "user")
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def sync_user_budgets(session: Session, discovered_emails: list[str]) -> list[str]:
+    """Ensure every discovered user has a budget_configs row with default limits.
+
+    Returns the list of newly created user emails.
+    """
+    default = get_default_budget_row(session)
+    if default is None:
+        logger.info("No default budget configured — skipping user sync")
+        return []
+
+    daily = default.daily_dollar_limit
+    weekly = default.weekly_dollar_limit
+    monthly = default.monthly_dollar_limit
+
+    if daily is None and weekly is None and monthly is None:
+        logger.info("All default budget limits are null — skipping user sync")
+        return []
+
+    existing = get_existing_budget_user_ids(session)
+    new_emails = []
+
+    for email in discovered_emails:
+        if email not in existing:
+            save_budget_config(
+                session,
+                entity_type="user",
+                entity_id=email,
+                daily_limit=daily,
+                weekly_limit=weekly,
+                monthly_limit=monthly,
+            )
+            new_emails.append(email)
+
+    logger.info("Synced %d new user budgets out of %d discovered", len(new_emails), len(discovered_emails))
+    return new_emails
 
 
 def save_default_budget(

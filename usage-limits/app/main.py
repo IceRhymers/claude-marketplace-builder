@@ -16,7 +16,7 @@ from api import budget_router
 from core.config import AppConfig
 from core.db import create_engine_from_config, init_schema, make_session_factory
 from core.discovery import discover_data_sources
-from core.evaluator import run_evaluation_cycle
+from core.evaluator import run_evaluation_cycle, run_user_sync_cycle
 from routers.overview import router as overview_router
 from routers.users import router as users_router
 from routers.budgets import router as budgets_router
@@ -55,6 +55,13 @@ async def lifespan(app: FastAPI):
         finally:
             session.close()
 
+    def _run_sync():
+        session = session_factory()
+        try:
+            run_user_sync_cycle(client, session, config.sql_warehouse_id)
+        finally:
+            session.close()
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         _run_cycle,
@@ -62,8 +69,15 @@ async def lifespan(app: FastAPI):
         minutes=config.evaluation_interval_minutes,
         id="budget_evaluator",
     )
+    scheduler.add_job(
+        _run_sync,
+        "interval",
+        minutes=config.user_sync_interval_minutes,
+        id="user_sync",
+    )
     scheduler.start()
     logger.info("Budget evaluator started: every %dm", config.evaluation_interval_minutes)
+    logger.info("User sync started: every %dm", config.user_sync_interval_minutes)
 
     yield
 
