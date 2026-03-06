@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
 from main import app
-from deps import get_discovery
+from deps import get_discovery, get_current_user
 from core.discovery import DiscoveryResult, InferenceTableInfo
 
 
 @pytest.fixture
-def test_client():
-    discovery = DiscoveryResult(
+def mock_discovery():
+    return DiscoveryResult(
         system_table="ai_gateway",
         inference_tables=[
             InferenceTableInfo(
@@ -24,7 +24,12 @@ def test_client():
             )
         ],
     )
-    app.dependency_overrides[get_discovery] = lambda: discovery
+
+
+@pytest.fixture
+def test_client(mock_discovery, admin_identity):
+    app.dependency_overrides[get_discovery] = lambda: mock_discovery
+    app.dependency_overrides[get_current_user] = lambda: admin_identity
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
 
@@ -38,3 +43,16 @@ class TestGetDataSourceStatus:
         assert data["system_table"] == "ai_gateway"
         assert len(data["inference_tables"]) == 1
         assert data["inference_tables"][0]["endpoint_name"] == "claude-code"
+
+
+@pytest.mark.unit
+class TestDiscoveryAdminGating:
+    def test_returns_403_for_non_admin(self, mock_discovery, non_admin_identity):
+        app.dependency_overrides[get_discovery] = lambda: mock_discovery
+        app.dependency_overrides[get_current_user] = lambda: non_admin_identity
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.get("/api/discovery/status")
+        assert response.status_code == 403
+
+        app.dependency_overrides.clear()

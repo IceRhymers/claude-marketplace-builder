@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from core.warnings import get_active_warnings, mark_warning_resolved, log_audit_entry
-from deps import get_db
+from deps import get_db, require_admin
 from schemas.warnings import WarningOut, ResolveWarningIn
 
-router = APIRouter(prefix="/api/warnings", tags=["warnings"])
+router = APIRouter(prefix="/api/warnings", tags=["warnings"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=list[WarningOut], operation_id="listActiveWarnings")

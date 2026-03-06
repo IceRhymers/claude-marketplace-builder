@@ -10,7 +10,8 @@ from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from databricks.sdk import WorkspaceClient
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.staticfiles import StaticFiles
 
 from api import budget_router
 from core.config import AppConfig
@@ -24,8 +25,20 @@ from routers.warnings import router as warnings_router
 from routers.audit import router as audit_router
 from routers.otel import router as otel_router
 from routers.discovery import router as discovery_router
+from routers.me import router as me_router
+from routers.my_usage import router as my_usage_router
 
 logger = logging.getLogger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve index.html for any path not found as a static file (SPA catch-all)."""
+
+    async def get_response(self, path: str, scope) -> Response:
+        response = await super().get_response(path, scope)
+        if response.status_code == 404:
+            response = await super().get_response(".", scope)
+        return response
 
 
 @asynccontextmanager
@@ -94,12 +107,14 @@ app.include_router(warnings_router)
 app.include_router(audit_router)
 app.include_router(otel_router)
 app.include_router(discovery_router)
+app.include_router(me_router)
+app.include_router(my_usage_router)
 app.include_router(budget_router)
 
 # Serve React frontend static build if available
 frontend_dist = Path(__file__).resolve().parent / "frontend" / "dist"
 if frontend_dist.is_dir():
     logger.info("Mounting frontend from %s", frontend_dist)
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+    app.mount("/", SPAStaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 else:
     logger.warning("Frontend dist not found at %s", frontend_dist)

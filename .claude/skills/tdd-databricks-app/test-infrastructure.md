@@ -1,16 +1,29 @@
 # Test Infrastructure
 
-Complete pytest configuration and shared fixtures for Databricks app TDD.
+Complete test configuration and shared fixtures for Databricks APX apps (FastAPI backend + React frontend).
 
-## pyproject.toml Configuration
+---
 
-Add to the app's `pyproject.toml`:
+## Backend (Python / pytest / uv)
+
+### pyproject.toml Configuration
+
+The app's `pyproject.toml` (already configured):
 
 ```toml
 [project]
 name = "usage-limits-app"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.11"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-randomly>=3.15",
+    "pytest-mock>=3.14",
+    "httpx>=0.27",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -22,22 +35,13 @@ addopts = "-v --tb=short --strict-markers"
 pythonpath = ["."]
 ```
 
-## test-requirements.txt
-
-```
-pytest>=8.0
-pytest-cov>=5.0
-pytest-randomly>=3.15
-pytest-mock>=3.14
-```
-
-Install alongside app requirements:
+### Installing Backend Test Dependencies
 
 ```bash
-pip install -r requirements.txt -r test-requirements.txt
+cd usage-limits/app && uv sync --group dev
 ```
 
-## conftest.py Template
+### conftest.py Template
 
 Place at `app/tests/conftest.py`:
 
@@ -64,7 +68,7 @@ def env_vars(monkeypatch):
     monkeypatch.setenv("LAKEBASE_ENDPOINT", "projects/test/branches/main/endpoints/ep-1")
     monkeypatch.setenv("SQL_WAREHOUSE_ID", "test-warehouse-id")
     monkeypatch.setenv("DATA_SOURCE", "endpoint_usage")
-    monkeypatch.setenv("ENFORCEMENT_INTERVAL_MINUTES", "5")
+    monkeypatch.setenv("EVALUATION_INTERVAL_MINUTES", "5")
     monkeypatch.setenv("ENFORCEMENT_ENABLED", "true")
     monkeypatch.setenv("OTEL_TABLE", "")
 
@@ -78,7 +82,7 @@ def mock_workspace_client():
     """Mock WorkspaceClient with pre-configured sub-services."""
     client = MagicMock()
 
-    # statement_execution — used for querying system tables
+    # statement_execution -- used for querying system tables
     client.statement_execution.execute_statement.return_value = MagicMock(
         status=MagicMock(state="SUCCEEDED"),
         manifest=MagicMock(
@@ -90,13 +94,13 @@ def mock_workspace_client():
         result=MagicMock(data_array=[]),
     )
 
-    # serving_endpoints — used for permission management
+    # serving_endpoints -- used for permission management
     client.serving_endpoints.get_permissions.return_value = MagicMock(
         access_control_list=[]
     )
     client.serving_endpoints.update_permissions.return_value = None
 
-    # postgres — used for Lakebase credential generation
+    # postgres -- used for Lakebase credential generation
     client.postgres.generate_database_credential.return_value = MagicMock(
         token="mock-oauth-token"
     )
@@ -126,7 +130,7 @@ def make_query_result():
 
 
 # ---------------------------------------------------------------------------
-# Lakebase / psycopg fixtures
+# SQLAlchemy / Lakebase fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -143,6 +147,7 @@ def mock_session():
 @pytest.fixture
 def test_client(mock_session, mock_workspace_client):
     """FastAPI TestClient with mocked dependencies."""
+    from fastapi.testclient import TestClient
     from main import app
     from deps import get_db, get_config, get_client
 
@@ -217,36 +222,174 @@ def sample_default_budget():
     }
 ```
 
-## Running Tests Locally
-
-From the app directory (e.g., `plugins/databricks-skills/skills/usage-limits/app/`):
+### Running Backend Tests Locally
 
 ```bash
-# Install test dependencies
-pip install -r test-requirements.txt
+# Install dev dependencies
+cd usage-limits/app && uv sync --group dev
 
 # Run all tests
-python -m pytest tests/ -v
+cd usage-limits/app && uv run pytest tests/ -v
 
 # Run only unit tests (fast feedback)
-python -m pytest tests/ -m unit -v
+cd usage-limits/app && uv run pytest tests/ -m unit -v
 
 # Run only integration tests
-python -m pytest tests/ -m integration -v
+cd usage-limits/app && uv run pytest tests/ -m integration -v
 
 # Run tests for a specific module
-python -m pytest tests/unit/test_budget.py -v
+cd usage-limits/app && uv run pytest tests/unit/test_budget.py -v
 
 # Run with coverage
-python -m pytest tests/ --cov=core --cov-report=term-missing
+cd usage-limits/app && uv run pytest tests/ --cov=core --cov-report=term-missing
 
 # Run with coverage threshold (fails if under 80%)
-python -m pytest tests/ --cov=core --cov-fail-under=80
+cd usage-limits/app && uv run pytest tests/ --cov=core --cov-fail-under=80
 ```
 
-Or use the Makefile from the repo root:
+---
+
+## Frontend (TypeScript / Vitest / npm)
+
+### Installing Frontend Test Dependencies
 
 ```bash
-make test-app APP=usage-limits
-make test-app-coverage APP=usage-limits
+cd usage-limits/app/frontend && npm install -D vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom
+```
+
+### Vitest Configuration
+
+Add test config to `vite.config.ts`:
+
+```ts
+/// <reference types="vitest/config" />
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
+import path from "path";
+
+export default defineConfig({
+  plugins: [TanStackRouterVite({ target: "react", autoCodeSplitting: true }), react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  build: {
+    outDir: "dist",
+  },
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+    },
+  },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./src/__tests__/setup.ts"],
+    include: ["src/__tests__/**/*.test.{ts,tsx}"],
+    css: false,
+  },
+});
+```
+
+### TypeScript Configuration for Tests
+
+Add to `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
+  }
+}
+```
+
+### Test Setup File
+
+Place at `frontend/src/__tests__/setup.ts`:
+
+```ts
+import "@testing-library/jest-dom";
+import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
+
+// Automatically cleanup after each test
+afterEach(() => {
+  cleanup();
+});
+```
+
+### Test Providers Helper
+
+Place at `frontend/src/__tests__/helpers/render.tsx`:
+
+```tsx
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { type ReactNode } from "react";
+import { render, type RenderOptions } from "@testing-library/react";
+
+function createTestQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+      mutations: {
+        retry: false,
+      },
+    },
+  });
+}
+
+export function TestProviders({ children }: { children: ReactNode }) {
+  const queryClient = createTestQueryClient();
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+}
+
+export function renderWithProviders(ui: React.ReactElement, options?: Omit<RenderOptions, "wrapper">) {
+  return render(ui, { wrapper: TestProviders, ...options });
+}
+```
+
+### Running Frontend Tests Locally
+
+```bash
+# Run all tests once
+cd usage-limits/app/frontend && npx vitest run
+
+# Run in watch mode (during development)
+cd usage-limits/app/frontend && npx vitest
+
+# Run a specific test file
+cd usage-limits/app/frontend && npx vitest run src/__tests__/routes/overview.test.tsx
+
+# Run with coverage
+cd usage-limits/app/frontend && npx vitest run --coverage
+
+# Type-check (no emit)
+cd usage-limits/app/frontend && npx tsc --noEmit
+```
+
+---
+
+## Combined (Makefile from repo root)
+
+```bash
+# Run all backend tests
+make test-backend
+
+# Run all frontend tests
+make test-frontend
+
+# Run everything
+make test-all
+
+# Type-check frontend
+make type-check
 ```

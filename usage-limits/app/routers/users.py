@@ -9,11 +9,11 @@ from core.config import AppConfig
 from core.cache import get_dollar_usage_cached, get_user_usage_cached
 from core.budget import get_user_budget
 from core.models import UsageSnapshot
-from deps import get_config, get_client, get_db
+from deps import get_config, get_client, get_db, require_admin
 from schemas.users import UserUsageHistoryOut, UserUsageDayOut, UserSnapshotOut
 from schemas.budgets import BudgetConfigOut
 
-router = APIRouter(prefix="/api/users", tags=["users"])
+router = APIRouter(prefix="/api/users", tags=["users"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=list[str], operation_id="listUsers")

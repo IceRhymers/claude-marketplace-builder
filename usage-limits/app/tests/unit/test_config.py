@@ -57,6 +57,21 @@ class TestAppConfigFromEnv:
 
         assert config.budget_api_port == 9000
 
+    def test_admin_groups_default_empty(self, env_vars):
+        from core.config import AppConfig
+
+        config = AppConfig.from_env()
+
+        assert config.admin_groups == []
+
+    def test_admin_groups_csv_parsing(self, env_vars, monkeypatch):
+        monkeypatch.setenv("ADMIN_GROUPS", "data-team, ml-team, platform")
+        from core.config import AppConfig
+
+        config = AppConfig.from_env()
+
+        assert config.admin_groups == ["data-team", "ml-team", "platform"]
+
     def test_conninfo_property(self, env_vars):
         from core.config import AppConfig
 

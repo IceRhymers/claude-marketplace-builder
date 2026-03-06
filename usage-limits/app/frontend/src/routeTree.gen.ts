@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as OtelRouteImport } from './routes/otel'
+import { Route as MyUsageRouteImport } from './routes/my-usage'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UsersIndexRouteImport } from './routes/users/index'
 import { Route as BudgetsIndexRouteImport } from './routes/budgets/index'
@@ -24,6 +25,11 @@ const OverviewRoute = OverviewRouteImport.update({
 const OtelRoute = OtelRouteImport.update({
   id: '/otel',
   path: '/otel',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyUsageRoute = MyUsageRouteImport.update({
+  id: '/my-usage',
+  path: '/my-usage',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -49,6 +55,7 @@ const UsersUserEmailRoute = UsersUserEmailRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/my-usage': typeof MyUsageRoute
   '/otel': typeof OtelRoute
   '/overview': typeof OverviewRoute
   '/users/$userEmail': typeof UsersUserEmailRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/my-usage': typeof MyUsageRoute
   '/otel': typeof OtelRoute
   '/overview': typeof OverviewRoute
   '/users/$userEmail': typeof UsersUserEmailRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/my-usage': typeof MyUsageRoute
   '/otel': typeof OtelRoute
   '/overview': typeof OverviewRoute
   '/users/$userEmail': typeof UsersUserEmailRoute
@@ -76,16 +85,25 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/my-usage'
     | '/otel'
     | '/overview'
     | '/users/$userEmail'
     | '/budgets'
     | '/users'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/otel' | '/overview' | '/users/$userEmail' | '/budgets' | '/users'
+  to:
+    | '/'
+    | '/my-usage'
+    | '/otel'
+    | '/overview'
+    | '/users/$userEmail'
+    | '/budgets'
+    | '/users'
   id:
     | '__root__'
     | '/'
+    | '/my-usage'
     | '/otel'
     | '/overview'
     | '/users/$userEmail'
@@ -95,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  MyUsageRoute: typeof MyUsageRoute
   OtelRoute: typeof OtelRoute
   OverviewRoute: typeof OverviewRoute
   UsersUserEmailRoute: typeof UsersUserEmailRoute
@@ -116,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/otel'
       fullPath: '/otel'
       preLoaderRoute: typeof OtelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-usage': {
+      id: '/my-usage'
+      path: '/my-usage'
+      fullPath: '/my-usage'
+      preLoaderRoute: typeof MyUsageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -151,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  MyUsageRoute: MyUsageRoute,
   OtelRoute: OtelRoute,
   OverviewRoute: OverviewRoute,
   UsersUserEmailRoute: UsersUserEmailRoute,

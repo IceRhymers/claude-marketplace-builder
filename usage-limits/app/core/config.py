@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from core.auth import parse_admin_groups
+
 
 @dataclass(frozen=True)
 class AppConfig:
@@ -18,6 +20,7 @@ class AppConfig:
     user_sync_interval_minutes: int
     budget_api_port: int
     otel_table: str | None
+    admin_groups: list[str]
 
     @classmethod
     def from_env(cls) -> AppConfig:
@@ -52,6 +55,9 @@ class AppConfig:
                 os.environ.get("BUDGET_API_PORT", "8502")
             ),
             otel_table=otel_table if otel_table else None,
+            admin_groups=parse_admin_groups(
+                os.environ.get("ADMIN_GROUPS", "")
+            ),
         )
 
     @property

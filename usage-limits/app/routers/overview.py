@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends
 
 from core.config import AppConfig
 from core.cache import get_dollar_usage_cached, get_top_users_cached
-from deps import get_config, get_client
+from deps import get_config, get_client, require_admin
 from schemas.overview import OverviewMetricsOut, TopUserOut
 
-router = APIRouter(prefix="/api/overview", tags=["overview"])
+router = APIRouter(prefix="/api/overview", tags=["overview"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/metrics", response_model=OverviewMetricsOut, operation_id="getOverviewMetrics")

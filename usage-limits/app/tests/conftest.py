@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from core.auth import UserIdentity
+
 
 # ---------------------------------------------------------------------------
 # Environment fixtures
@@ -183,3 +185,29 @@ def sample_default_budget():
         "weekly_dollar_limit": 100.00,
         "monthly_dollar_limit": 300.00,
     }
+
+
+# ---------------------------------------------------------------------------
+# Auth identity fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def admin_identity():
+    """An admin UserIdentity for router tests."""
+    return UserIdentity(
+        email="admin@example.com",
+        display_name="Admin User",
+        groups=["admins", "users"],
+        is_admin=True,
+    )
+
+
+@pytest.fixture
+def non_admin_identity():
+    """A non-admin UserIdentity for router tests."""
+    return UserIdentity(
+        email="user@example.com",
+        display_name="Regular User",
+        groups=["users"],
+        is_admin=False,
+    )

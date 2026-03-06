@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from core.budget import save_budget_config, save_default_budget
 from core.models import BudgetConfig, DefaultBudget
 from core.warnings import log_audit_entry
-from deps import get_db
+from deps import get_db, require_admin
 from schemas.budgets import BudgetConfigIn, BudgetConfigOut, DefaultBudgetIn, DefaultBudgetOut
 
-router = APIRouter(prefix="/api/budgets", tags=["budgets"])
+router = APIRouter(prefix="/api/budgets", tags=["budgets"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=list[BudgetConfigOut], operation_id="listBudgets")

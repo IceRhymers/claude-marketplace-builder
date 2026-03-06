@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from deps import get_config, get_client, get_db
+from deps import get_config, get_client, get_db, get_current_user
 
 
 @pytest.fixture
@@ -21,10 +21,11 @@ def mock_ws_client():
 
 
 @pytest.fixture
-def test_client(mock_config, mock_ws_client, mock_session):
+def test_client(mock_config, mock_ws_client, mock_session, admin_identity):
     app.dependency_overrides[get_config] = lambda: mock_config
     app.dependency_overrides[get_client] = lambda: mock_ws_client
     app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[get_current_user] = lambda: admin_identity
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
 
@@ -127,3 +128,16 @@ class TestGetUserBudget:
         data = response.json()
         assert data["entity_id"] == "user@e.com"
         assert data["daily_dollar_limit"] == 50.0
+
+
+@pytest.mark.unit
+class TestUsersAdminGating:
+    def test_returns_403_for_non_admin(self, mock_session, non_admin_identity):
+        app.dependency_overrides[get_db] = lambda: mock_session
+        app.dependency_overrides[get_current_user] = lambda: non_admin_identity
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.get("/api/users/")
+        assert response.status_code == 403
+
+        app.dependency_overrides.clear()

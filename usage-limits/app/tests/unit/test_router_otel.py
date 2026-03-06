@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from deps import get_config, get_client
+from deps import get_config, get_client, get_current_user
 
 
 @pytest.fixture
@@ -30,17 +30,19 @@ def mock_ws_client():
 
 
 @pytest.fixture
-def test_client_otel(mock_config_with_otel, mock_ws_client):
+def test_client_otel(mock_config_with_otel, mock_ws_client, admin_identity):
     app.dependency_overrides[get_config] = lambda: mock_config_with_otel
     app.dependency_overrides[get_client] = lambda: mock_ws_client
+    app.dependency_overrides[get_current_user] = lambda: admin_identity
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def test_client_no_otel(mock_config_no_otel, mock_ws_client):
+def test_client_no_otel(mock_config_no_otel, mock_ws_client, admin_identity):
     app.dependency_overrides[get_config] = lambda: mock_config_no_otel
     app.dependency_overrides[get_client] = lambda: mock_ws_client
+    app.dependency_overrides[get_current_user] = lambda: admin_identity
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
 
@@ -99,3 +101,17 @@ class TestGetOtelMetrics:
         response = test_client_no_otel.get("/api/otel/metrics")
         assert response.status_code == 200
         assert response.json() == []
+
+
+@pytest.mark.unit
+class TestOtelAdminGating:
+    def test_returns_403_for_non_admin(self, mock_config_with_otel, mock_ws_client, non_admin_identity):
+        app.dependency_overrides[get_config] = lambda: mock_config_with_otel
+        app.dependency_overrides[get_client] = lambda: mock_ws_client
+        app.dependency_overrides[get_current_user] = lambda: non_admin_identity
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.get("/api/otel/status")
+        assert response.status_code == 403
+
+        app.dependency_overrides.clear()

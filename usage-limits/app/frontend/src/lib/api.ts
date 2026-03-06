@@ -99,6 +99,28 @@ export interface OtelMetric {
   event_time: string | null;
 }
 
+// Auth
+export interface MeResponse {
+  email: string;
+  display_name: string;
+  is_admin: boolean;
+}
+export const getMe = () => api.get<MeResponse>("/api/me").then((r) => r.data);
+
+// My Usage
+export interface MyBudgetStatus {
+  daily_dollar_limit: number | null;
+  weekly_dollar_limit: number | null;
+  monthly_dollar_limit: number | null;
+  dollar_cost_1d: number | null;
+  dollar_cost_7d: number | null;
+  dollar_cost_30d: number | null;
+  is_admin: boolean;
+}
+export const getMySnapshot = () => api.get<UserSnapshot | null>("/api/my-usage/snapshot").then((r) => r.data);
+export const getMyHistory = (days = 30) => api.get<UserUsageHistory>(`/api/my-usage/history?days=${days}`).then((r) => r.data);
+export const getMyBudget = () => api.get<MyBudgetStatus | null>("/api/my-usage/budget").then((r) => r.data);
+
 // Overview
 export const getOverviewMetrics = () => api.get<OverviewMetrics>("/api/overview/metrics").then((r) => r.data);
 export const getTopUsers = () => api.get<TopUser[]>("/api/overview/top-users").then((r) => r.data);

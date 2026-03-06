@@ -5,12 +5,13 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from main import app
-from deps import get_db
+from deps import get_db, get_current_user
 
 
 @pytest.fixture
-def test_client(mock_session):
+def test_client(mock_session, admin_identity):
     app.dependency_overrides[get_db] = lambda: mock_session
+    app.dependency_overrides[get_current_user] = lambda: admin_identity
     yield TestClient(app, raise_server_exceptions=False)
     app.dependency_overrides.clear()
 
@@ -147,3 +148,16 @@ class TestSaveDefaultBudget:
         })
         assert response.status_code == 200
         mock_save.assert_called_once()
+
+
+@pytest.mark.unit
+class TestBudgetsAdminGating:
+    def test_returns_403_for_non_admin(self, mock_session, non_admin_identity):
+        app.dependency_overrides[get_db] = lambda: mock_session
+        app.dependency_overrides[get_current_user] = lambda: non_admin_identity
+        client = TestClient(app, raise_server_exceptions=False)
+
+        response = client.get("/api/budgets/")
+        assert response.status_code == 403
+
+        app.dependency_overrides.clear()

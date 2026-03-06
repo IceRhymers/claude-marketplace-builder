@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from core.models import AuditLog
-from deps import get_db
+from deps import get_db, require_admin
 from schemas.audit import AuditLogOut
 
-router = APIRouter(prefix="/api/audit", tags=["audit"])
+router = APIRouter(prefix="/api/audit", tags=["audit"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/", response_model=list[AuditLogOut], operation_id="listAuditLog")

@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from core.discovery import DiscoveryResult
-from deps import get_discovery
+from deps import get_discovery, require_admin
 
-router = APIRouter(prefix="/api/discovery", tags=["discovery"])
+router = APIRouter(prefix="/api/discovery", tags=["discovery"], dependencies=[Depends(require_admin)])
 
 
 class DataSourceStatusOut:

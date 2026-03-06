@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends
 
 from core.config import AppConfig
 from core.cache import get_otel_metrics_cached, get_otel_user_summary_cached
-from deps import get_config, get_client
+from deps import get_config, get_client, require_admin
 from schemas.otel import OtelStatusOut, OtelUserSummaryOut, OtelMetricOut
 
-router = APIRouter(prefix="/api/otel", tags=["otel"])
+router = APIRouter(prefix="/api/otel", tags=["otel"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/status", response_model=OtelStatusOut, operation_id="getOtelStatus")
