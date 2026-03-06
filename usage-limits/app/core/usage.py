@@ -121,6 +121,14 @@ def upsert_usage_snapshots(session: Session, rows: list[dict]) -> None:
     logger.info("Upserted %d usage snapshots", len(rows))
 
 
+def get_usage_snapshot(session: Session, user_id: str) -> dict | None:
+    """Get the cached usage snapshot for a user, or None if not found."""
+    row = session.query(UsageSnapshot).filter(UsageSnapshot.user_id == user_id).first()
+    if row is None:
+        return None
+    return row.to_dict()
+
+
 def get_top_users(client, warehouse_id: str, n: int = 10) -> list[dict]:
     """Get top N users by total token usage for the current month."""
     sql = f"""\

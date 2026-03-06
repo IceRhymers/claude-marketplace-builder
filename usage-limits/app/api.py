@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException
 from databricks.sdk import WorkspaceClient
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
-from core.warnings import get_active_warnings_for_user
+from core.budget import evaluate_budget, get_user_budget
+from core.usage import get_usage_snapshot
 from deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -18,39 +19,67 @@ budget_router = APIRouter(tags=["budget-check"])
 
 @budget_router.get("/api/check-budget", operation_id="checkBudget")
 def check_budget(
-    authorization: str = Header(default=None),
+    x_forwarded_access_token: str = Header(default=None),
     session: Session = Depends(get_db),
 ):
     """Check if a user is within their budget.
 
-    Resolves user identity from the Databricks token in the Authorization header.
+    Evaluates current usage vs budget directly from usage_snapshots and
+    budget_configs. Does not rely on the warnings table.
+
+    Resolves user identity from the X-Forwarded-Access-Token header
+    (set by the Databricks Apps reverse proxy).
     Returns {"allowed": true} or {"allowed": false, "reason": "..."}.
     """
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    if not x_forwarded_access_token:
+        logger.warning("Budget check rejected: missing X-Forwarded-Access-Token header")
+        raise HTTPException(status_code=401, detail="Missing X-Forwarded-Access-Token header")
 
-    token = authorization.removeprefix("Bearer ").strip()
+    token = x_forwarded_access_token.strip()
+    logger.info("Budget check: received token (length=%d)", len(token))
 
     try:
-        client = WorkspaceClient(token=token, host="")
+        client = WorkspaceClient(token=token, auth_type="pat")
         user = client.current_user.me()
         user_email = user.user_name
     except Exception:
+        logger.exception("Budget check: failed to resolve user identity from token")
         raise HTTPException(status_code=401, detail="Invalid token")
 
     logger.info("Budget check request for user=%s", user_email)
 
-    warnings = get_active_warnings_for_user(session, user_email)
+    budget = get_user_budget(session, user_email)
+    if budget is None:
+        logger.info("Budget check allowed for user=%s (no budget configured)", user_email)
+        return {"allowed": True}
 
-    if warnings:
-        first = warnings[0]
-        reason = first["reason"]
-        logger.info("Budget check denied for user=%s: %s", user_email, reason)
+    if budget.get("is_admin"):
+        logger.info("Budget check allowed for user=%s (admin)", user_email)
+        return {"allowed": True}
+
+    snapshot = get_usage_snapshot(session, user_email)
+    if snapshot is None:
+        logger.info("Budget check allowed for user=%s (no usage snapshot)", user_email)
+        return {"allowed": True}
+
+    result = evaluate_budget(
+        daily_usage=float(snapshot.get("dollar_cost_1d") or 0),
+        weekly_usage=float(snapshot.get("dollar_cost_7d") or 0),
+        monthly_usage=float(snapshot.get("dollar_cost_30d") or 0),
+        daily_limit=float(budget["daily_dollar_limit"]) if budget.get("daily_dollar_limit") is not None else None,
+        weekly_limit=float(budget["weekly_dollar_limit"]) if budget.get("weekly_dollar_limit") is not None else None,
+        monthly_limit=float(budget["monthly_dollar_limit"]) if budget.get("monthly_dollar_limit") is not None else None,
+    )
+
+    if result.exceeded:
+        violation = result.violations[0]
+        logger.info("Budget check denied for user=%s: %s", user_email, violation.reason)
         return {
             "allowed": False,
-            "reason": reason,
-            "usage": float(first.get("dollar_usage") or 0),
-            "limit": float(first.get("dollar_limit") or 0),
+            "reason": violation.reason,
+            "usage": violation.usage,
+            "limit": violation.limit,
+            "period": violation.reason.replace("_limit", ""),
         }
 
     logger.info("Budget check allowed for user=%s", user_email)

@@ -37,3 +37,12 @@ tests:
   - name: mcp-setup-proxy-missing
     prompt: "MCP proxy isn't working when I try to use Slack tools"
     expected_skill: mcp-setup
+
+  # --- budget-setup (2) ---
+  - name: budget-setup-troubleshoot
+    prompt: "The budget checker hook isn't blocking me when I'm over budget, how do I troubleshoot it?"
+    expected_skill: budget-setup
+
+  - name: budget-setup-configure
+    prompt: "How do I configure the BUDGET_API_URL for the AI Gateway budget enforcement plugin?"
+    expected_skill: budget-setup
