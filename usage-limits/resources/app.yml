@@ -17,7 +17,9 @@ resources:
         - name: "usage-limits-db"
           description: "Lakebase PostgreSQL database for app state"
           database:
-            name: "databricks_postgres"
+            database_name: "databricks_postgres"
+            instance_name: ${resources.database_instances.usage_limits_instance.name}
+            permission: "CAN_CONNECT_AND_CREATE"
 
       permissions:
         - level: CAN_USE

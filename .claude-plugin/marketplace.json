@@ -68,6 +68,16 @@
         "name": "AI engineering"
       },
       "category": "observability"
+    },
+    {
+      "name": "icerhymers-budget-checker",
+      "source": "./plugins/budget-checker",
+      "description": "AI Gateway budget enforcement hooks for Claude Code",
+      "version": "1.0.0",
+      "author": {
+        "name": "AI engineering"
+      },
+      "category": "enterprise"
     }
   ]
 }

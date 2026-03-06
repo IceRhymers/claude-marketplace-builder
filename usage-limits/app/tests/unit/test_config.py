@@ -14,26 +14,10 @@ class TestAppConfigFromEnv:
 
         assert config.pg_host == "test-host.cloud.databricks.com"
         assert config.pg_database == "databricks_postgres"
-        assert config.pg_user == "test-client-id"
-        assert config.lakebase_endpoint == "projects/test/branches/main/endpoints/ep-1"
+        assert config.lakebase_instance == "usage-limits"
         assert config.sql_warehouse_id == "test-warehouse-id"
         assert config.evaluation_interval_minutes == 5
         assert config.budget_api_port == 8502
-
-    def test_otel_table_empty_string_becomes_none(self, env_vars):
-        from core.config import AppConfig
-
-        config = AppConfig.from_env()
-
-        assert config.otel_table is None
-
-    def test_otel_table_set(self, env_vars, monkeypatch):
-        monkeypatch.setenv("OTEL_TABLE", "my_catalog.my_schema.claude_otel_metrics")
-        from core.config import AppConfig
-
-        config = AppConfig.from_env()
-
-        assert config.otel_table == "my_catalog.my_schema.claude_otel_metrics"
 
     def test_missing_required_var_raises(self, env_vars, monkeypatch):
         monkeypatch.delenv("SQL_WAREHOUSE_ID")
@@ -58,6 +42,21 @@ class TestAppConfigFromEnv:
 
         assert config.budget_api_port == 9000
 
+    def test_admin_groups_default_empty(self, env_vars):
+        from core.config import AppConfig
+
+        config = AppConfig.from_env()
+
+        assert config.admin_groups == []
+
+    def test_admin_groups_csv_parsing(self, env_vars, monkeypatch):
+        monkeypatch.setenv("ADMIN_GROUPS", "data-team, ml-team, platform")
+        from core.config import AppConfig
+
+        config = AppConfig.from_env()
+
+        assert config.admin_groups == ["data-team", "ml-team", "platform"]
+
     def test_conninfo_property(self, env_vars):
         from core.config import AppConfig
 
@@ -65,6 +64,5 @@ class TestAppConfigFromEnv:
         conninfo = config.conninfo
 
         assert "dbname=databricks_postgres" in conninfo
-        assert "user=test-client-id" in conninfo
         assert "host=test-host.cloud.databricks.com" in conninfo
         assert "sslmode=require" in conninfo

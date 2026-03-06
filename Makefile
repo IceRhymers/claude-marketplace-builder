@@ -11,7 +11,8 @@ PLUGINS := \
 	icerhymers-marketplace-management \
 	icerhymers-specialized-tools \
 	icerhymers-databricks-mcp \
-	icerhymers-databricks-otel
+	icerhymers-databricks-otel \
+	icerhymers-budget-checker
 
 MARKETPLACE := icerhymers-marketplace
 

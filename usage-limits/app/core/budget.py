@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import Session
+
+from core.models import BudgetConfig, DefaultBudget
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -11,8 +20,8 @@ class BudgetViolation:
     """A single budget limit that was exceeded."""
 
     reason: str
-    usage: int
-    limit: int
+    usage: float
+    limit: float
 
 
 @dataclass
@@ -43,7 +52,6 @@ def get_period_boundaries(
     if period == "daily":
         return ref, ref + timedelta(days=1)
     elif period == "weekly":
-        # Monday = 0 in isoweekday()-1 convention
         start = ref - timedelta(days=ref.weekday())
         return start, start + timedelta(days=7)
     elif period == "monthly":
@@ -58,12 +66,12 @@ def get_period_boundaries(
 
 
 def evaluate_budget(
-    daily_usage: int,
-    weekly_usage: int,
-    monthly_usage: int,
-    daily_limit: int | None,
-    weekly_limit: int | None,
-    monthly_limit: int | None,
+    daily_usage: float,
+    weekly_usage: float,
+    monthly_usage: float,
+    daily_limit: float | None,
+    weekly_limit: float | None,
+    monthly_limit: float | None,
 ) -> BudgetResult:
     """Evaluate whether any budget limits are exceeded.
 
@@ -78,86 +86,161 @@ def evaluate_budget(
     ]
 
     for reason, usage, limit in checks:
-        if limit is not None and usage > limit:
-            violations.append(BudgetViolation(reason=reason, usage=usage, limit=limit))
+        if limit is not None and (limit == 0 or usage > limit):
+            violations.append(BudgetViolation(reason=reason, usage=float(usage), limit=float(limit)))
 
     return BudgetResult(exceeded=len(violations) > 0, violations=violations)
 
 
-def _row_to_dict(cursor_description, row) -> dict:
-    """Convert a psycopg row tuple to a dict using cursor description."""
-    if row is None:
-        return None
-    columns = [desc[0] for desc in cursor_description]
-    return dict(zip(columns, row))
-
-
-def get_user_budget(pool, user_email: str) -> dict | None:
+def get_user_budget(session: Session, user_email: str) -> dict | None:
     """Get budget config for a user, falling back to defaults.
 
     Returns None if no budget exists (neither per-user nor default).
     """
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            # Try per-user budget first
-            cur.execute(
-                "SELECT * FROM budget_configs WHERE entity_type = 'user' AND entity_id = %s",
-                (user_email,),
-            )
-            row = cur.fetchone()
-            if row is not None:
-                return _row_to_dict(cur.description, row)
+    row = (
+        session.query(BudgetConfig)
+        .filter(BudgetConfig.entity_type == "user", BudgetConfig.entity_id == user_email)
+        .first()
+    )
+    if row is not None:
+        logger.info("Found per-user budget for %s", user_email)
+        return row.to_dict()
 
-            # Fall back to default budget
-            cur.execute(
-                "SELECT * FROM default_budgets ORDER BY id DESC LIMIT 1"
-            )
-            row = cur.fetchone()
-            if row is not None:
-                return _row_to_dict(cur.description, row)
+    default = get_default_budget_row(session)
+    if default is not None:
+        logger.info("Using default budget for %s (default_budget_id=%s)", user_email, default.id)
+        d = default.to_dict()
+        d["entity_type"] = "default"
+        d["entity_id"] = user_email
+        d["created_at"] = None
+        d["created_by"] = None
+        return d
 
+    logger.info("No budget found for %s (no per-user, no default)", user_email)
     return None
 
 
 def save_budget_config(
-    pool,
+    session: Session,
     entity_type: str,
     entity_id: str,
     daily_limit: int | None,
     weekly_limit: int | None,
     monthly_limit: int | None,
-    is_admin: bool = False,
+    is_custom: bool = False,
 ) -> None:
     """Insert or update a budget config (upsert on entity_type + entity_id)."""
-    sql = """\
-INSERT INTO budget_configs (entity_type, entity_id, daily_token_limit, weekly_token_limit, monthly_token_limit, is_admin, updated_at)
-VALUES (%s, %s, %s, %s, %s, %s, NOW())
-ON CONFLICT (entity_type, entity_id)
-DO UPDATE SET
-    daily_token_limit = EXCLUDED.daily_token_limit,
-    weekly_token_limit = EXCLUDED.weekly_token_limit,
-    monthly_token_limit = EXCLUDED.monthly_token_limit,
-    is_admin = EXCLUDED.is_admin,
-    updated_at = NOW()
-"""
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (entity_type, entity_id, daily_limit, weekly_limit, monthly_limit, is_admin))
-        conn.commit()
+    stmt = pg_insert(BudgetConfig).values(
+        entity_type=entity_type,
+        entity_id=entity_id,
+        daily_dollar_limit=daily_limit,
+        weekly_dollar_limit=weekly_limit,
+        monthly_dollar_limit=monthly_limit,
+        is_custom=is_custom,
+        updated_at=func.now(),
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["entity_type", "entity_id"],
+        set_={
+            "daily_dollar_limit": stmt.excluded.daily_dollar_limit,
+            "weekly_dollar_limit": stmt.excluded.weekly_dollar_limit,
+            "monthly_dollar_limit": stmt.excluded.monthly_dollar_limit,
+            "is_custom": stmt.excluded.is_custom,
+            "updated_at": func.now(),
+        },
+    )
+    session.execute(stmt)
+    session.commit()
+
+
+def get_default_budget_row(session: Session) -> DefaultBudget | None:
+    """Return the most recent default budget row, or None."""
+    return (
+        session.query(DefaultBudget)
+        .order_by(DefaultBudget.id.desc())
+        .first()
+    )
+
+
+def get_existing_budget_user_ids(session: Session) -> set[str]:
+    """Return the set of entity_ids that already have a per-user budget config."""
+    rows = (
+        session.query(BudgetConfig.entity_id)
+        .filter(BudgetConfig.entity_type == "user")
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def sync_user_budgets(session: Session, discovered_emails: list[str]) -> list[str]:
+    """Ensure every discovered user has a budget_configs row with default limits.
+
+    Returns the list of newly created user emails.
+    """
+    default = get_default_budget_row(session)
+    if default is None:
+        logger.info("No default budget configured — skipping user sync")
+        return []
+
+    daily = default.daily_dollar_limit
+    weekly = default.weekly_dollar_limit
+    monthly = default.monthly_dollar_limit
+
+    if daily is None and weekly is None and monthly is None:
+        logger.info("All default budget limits are null — skipping user sync")
+        return []
+
+    existing = get_existing_budget_user_ids(session)
+    new_emails = []
+
+    for email in discovered_emails:
+        if email not in existing:
+            save_budget_config(
+                session,
+                entity_type="user",
+                entity_id=email,
+                daily_limit=daily,
+                weekly_limit=weekly,
+                monthly_limit=monthly,
+                is_custom=False,
+            )
+            new_emails.append(email)
+
+    logger.info("Synced %d new user budgets out of %d discovered", len(new_emails), len(discovered_emails))
+    return new_emails
+
+
+def propagate_default_budget(
+    session: Session,
+    daily_limit: float | None,
+    weekly_limit: float | None,
+    monthly_limit: float | None,
+) -> int:
+    """Bulk-update all non-custom budget rows to match the new default limits."""
+    count = (
+        session.query(BudgetConfig)
+        .filter(BudgetConfig.is_custom == False)  # noqa: E712
+        .update({
+            BudgetConfig.daily_dollar_limit: daily_limit,
+            BudgetConfig.weekly_dollar_limit: weekly_limit,
+            BudgetConfig.monthly_dollar_limit: monthly_limit,
+            BudgetConfig.updated_at: func.now(),
+        })
+    )
+    session.commit()
+    return count
 
 
 def save_default_budget(
-    pool,
+    session: Session,
     daily_limit: int | None,
     weekly_limit: int | None,
     monthly_limit: int | None,
 ) -> None:
     """Save the default budget (replaces existing)."""
-    sql = """\
-INSERT INTO default_budgets (daily_token_limit, weekly_token_limit, monthly_token_limit, updated_at)
-VALUES (%s, %s, %s, NOW())
-"""
-    with pool.connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, (daily_limit, weekly_limit, monthly_limit))
-        conn.commit()
+    session.add(DefaultBudget(
+        daily_dollar_limit=daily_limit,
+        weekly_dollar_limit=weekly_limit,
+        monthly_dollar_limit=monthly_limit,
+    ))
+    session.commit()

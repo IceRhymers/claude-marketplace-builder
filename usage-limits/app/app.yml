@@ -1,0 +1,16 @@
+command:
+  - python
+  - -c
+  - "import os, uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=int(os.environ.get('DATABRICKS_APP_PORT', '8000')))"
+
+env:
+  - name: PGHOST
+    valueFrom: usage-limits-db
+  - name: PGDATABASE
+    value: "databricks_postgres"
+  - name: LAKEBASE_INSTANCE
+    value: "usage-limits"
+  - name: SQL_WAREHOUSE_ID
+    valueFrom: sql-warehouse
+  - name: EVALUATION_INTERVAL_MINUTES
+    value: "5"

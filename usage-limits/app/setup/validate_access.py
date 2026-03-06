@@ -23,33 +23,21 @@ def validate_system_table_access(client, warehouse_id: str, source: str) -> bool
             warehouse_id=warehouse_id,
             statement=f"SELECT 1 FROM {table} LIMIT 1",
         )
-        return result.status.state == "SUCCEEDED"
+        ok = result.status.state == "SUCCEEDED"
+        logger.info("System table access validation for %s: %s", source, "passed" if ok else "failed")
+        return ok
     except Exception:
         logger.exception("System table access validation failed for %s", source)
         return False
 
 
-def validate_lakebase_access(pool) -> bool:
+def validate_lakebase_access(session) -> bool:
     """Check if the app can connect to Lakebase."""
     try:
-        with pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
-                cur.fetchone()
+        from sqlalchemy import text
+        session.execute(text("SELECT 1"))
+        logger.info("Lakebase access validation: passed")
         return True
     except Exception:
         logger.exception("Lakebase access validation failed")
-        return False
-
-
-def validate_otel_access(client, warehouse_id: str, otel_table: str) -> bool:
-    """Check if the app can query the OTEL metrics table."""
-    try:
-        result = client.statement_execution.execute_statement(
-            warehouse_id=warehouse_id,
-            statement=f"SELECT 1 FROM {otel_table} LIMIT 1",
-        )
-        return result.status.state == "SUCCEEDED"
-    except Exception:
-        logger.exception("OTEL table access validation failed for %s", otel_table)
         return False

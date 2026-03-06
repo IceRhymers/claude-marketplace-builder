@@ -44,48 +44,19 @@ class TestValidateSystemTableAccess:
 class TestValidateLakebaseAccess:
     """Tests for validate_lakebase_access()."""
 
-    def test_succeeds_when_pool_works(self, mock_db_pool, mock_cursor):
+    def test_succeeds_when_session_works(self, mock_session):
         from setup.validate_access import validate_lakebase_access
 
-        mock_cursor.fetchone.return_value = (1,)
-
-        result = validate_lakebase_access(mock_db_pool)
+        result = validate_lakebase_access(mock_session)
 
         assert result is True
 
     def test_fails_on_exception(self):
         from setup.validate_access import validate_lakebase_access
 
-        pool = MagicMock()
-        pool.connection.side_effect = Exception("connection failed")
+        session = MagicMock()
+        session.execute.side_effect = Exception("connection failed")
 
-        result = validate_lakebase_access(pool)
-
-        assert result is False
-
-
-@pytest.mark.integration
-class TestValidateOtelAccess:
-    """Tests for validate_otel_access()."""
-
-    def test_succeeds_when_table_exists(self, mock_workspace_client):
-        from setup.validate_access import validate_otel_access
-
-        mock_workspace_client.statement_execution.execute_statement.return_value = MagicMock(
-            status=MagicMock(state="SUCCEEDED"),
-        )
-
-        result = validate_otel_access(mock_workspace_client, "wh-id", "cat.sch.tbl")
-
-        assert result is True
-
-    def test_returns_false_when_table_missing(self, mock_workspace_client):
-        from setup.validate_access import validate_otel_access
-
-        mock_workspace_client.statement_execution.execute_statement.return_value = MagicMock(
-            status=MagicMock(state="FAILED"),
-        )
-
-        result = validate_otel_access(mock_workspace_client, "wh-id", "cat.sch.tbl")
+        result = validate_lakebase_access(session)
 
         assert result is False
