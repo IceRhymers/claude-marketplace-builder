@@ -83,6 +83,18 @@ class TestGetDollarUsage:
         assert "pricing_table" in sql
         assert "system.ai_gateway.usage" in sql
 
+    def test_sql_joins_on_endpoint_name(self, mock_workspace_client, make_query_result):
+        from core.usage import get_dollar_usage
+
+        mock_workspace_client.statement_execution.execute_statement.return_value = (
+            make_query_result(columns=["requester"], rows=[])
+        )
+
+        get_dollar_usage(mock_workspace_client, "wh-id")
+
+        sql = mock_workspace_client.statement_execution.execute_statement.call_args.kwargs["statement"]
+        assert "m.endpoint_name = p.endpoint_name" in sql
+
     def test_empty_result(self, mock_workspace_client, make_query_result):
         from core.usage import get_dollar_usage
 
