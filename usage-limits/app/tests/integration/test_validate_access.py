@@ -60,30 +60,3 @@ class TestValidateLakebaseAccess:
         result = validate_lakebase_access(session)
 
         assert result is False
-
-
-@pytest.mark.integration
-class TestValidateOtelAccess:
-    """Tests for validate_otel_access()."""
-
-    def test_succeeds_when_table_exists(self, mock_workspace_client):
-        from setup.validate_access import validate_otel_access
-
-        mock_workspace_client.statement_execution.execute_statement.return_value = MagicMock(
-            status=MagicMock(state="SUCCEEDED"),
-        )
-
-        result = validate_otel_access(mock_workspace_client, "wh-id", "cat.sch.tbl")
-
-        assert result is True
-
-    def test_returns_false_when_table_missing(self, mock_workspace_client):
-        from setup.validate_access import validate_otel_access
-
-        mock_workspace_client.statement_execution.execute_statement.return_value = MagicMock(
-            status=MagicMock(state="FAILED"),
-        )
-
-        result = validate_otel_access(mock_workspace_client, "wh-id", "cat.sch.tbl")
-
-        assert result is False

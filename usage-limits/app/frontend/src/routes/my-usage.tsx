@@ -83,7 +83,7 @@ function MyUsagePage() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <CardTitle>Budget Status</CardTitle>
-            {budget.data?.is_admin && <Badge>Admin (no limits enforced)</Badge>}
+            {budget.data && budget.data.daily_dollar_limit == null && budget.data.weekly_dollar_limit == null && budget.data.monthly_dollar_limit == null && <Badge>Unlimited (no limits enforced)</Badge>}
           </div>
         </CardHeader>
         <CardContent>

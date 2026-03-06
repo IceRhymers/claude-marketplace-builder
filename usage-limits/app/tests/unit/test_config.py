@@ -19,21 +19,6 @@ class TestAppConfigFromEnv:
         assert config.evaluation_interval_minutes == 5
         assert config.budget_api_port == 8502
 
-    def test_otel_table_empty_string_becomes_none(self, env_vars):
-        from core.config import AppConfig
-
-        config = AppConfig.from_env()
-
-        assert config.otel_table is None
-
-    def test_otel_table_set(self, env_vars, monkeypatch):
-        monkeypatch.setenv("OTEL_TABLE", "my_catalog.my_schema.claude_otel_metrics")
-        from core.config import AppConfig
-
-        config = AppConfig.from_env()
-
-        assert config.otel_table == "my_catalog.my_schema.claude_otel_metrics"
-
     def test_missing_required_var_raises(self, env_vars, monkeypatch):
         monkeypatch.delenv("SQL_WAREHOUSE_ID")
         from core.config import AppConfig

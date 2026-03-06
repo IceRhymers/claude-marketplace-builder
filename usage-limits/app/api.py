@@ -53,10 +53,6 @@ def check_budget(
         logger.info("Budget check allowed for user=%s (no budget configured)", user_email)
         return {"allowed": True}
 
-    if budget.get("is_admin"):
-        logger.info("Budget check allowed for user=%s (admin)", user_email)
-        return {"allowed": True}
-
     snapshot = get_usage_snapshot(session, user_email)
     if snapshot is None:
         logger.info("Budget check allowed for user=%s (no usage snapshot)", user_email)
@@ -71,6 +67,28 @@ def check_budget(
         monthly_limit=float(budget["monthly_dollar_limit"]) if budget.get("monthly_dollar_limit") is not None else None,
     )
 
+    # Pick the most relevant period to display (monthly > weekly > daily)
+    monthly_limit = float(budget["monthly_dollar_limit"]) if budget.get("monthly_dollar_limit") is not None else None
+    weekly_limit = float(budget["weekly_dollar_limit"]) if budget.get("weekly_dollar_limit") is not None else None
+    daily_limit = float(budget["daily_dollar_limit"]) if budget.get("daily_dollar_limit") is not None else None
+
+    if monthly_limit is not None:
+        display_usage = float(snapshot.get("dollar_cost_30d") or 0)
+        display_limit = monthly_limit
+        display_period = "monthly"
+    elif weekly_limit is not None:
+        display_usage = float(snapshot.get("dollar_cost_7d") or 0)
+        display_limit = weekly_limit
+        display_period = "weekly"
+    elif daily_limit is not None:
+        display_usage = float(snapshot.get("dollar_cost_1d") or 0)
+        display_limit = daily_limit
+        display_period = "daily"
+    else:
+        display_usage = float(snapshot.get("dollar_cost_30d") or 0)
+        display_limit = 0
+        display_period = "monthly"
+
     if result.exceeded:
         violation = result.violations[0]
         logger.info("Budget check denied for user=%s: %s", user_email, violation.reason)
@@ -83,4 +101,9 @@ def check_budget(
         }
 
     logger.info("Budget check allowed for user=%s", user_email)
-    return {"allowed": True}
+    return {
+        "allowed": True,
+        "usage": display_usage,
+        "limit": display_limit,
+        "period": display_period,
+    }

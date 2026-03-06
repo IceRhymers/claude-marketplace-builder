@@ -41,18 +41,3 @@ def validate_lakebase_access(session) -> bool:
     except Exception:
         logger.exception("Lakebase access validation failed")
         return False
-
-
-def validate_otel_access(client, warehouse_id: str, otel_table: str) -> bool:
-    """Check if the app can query the OTEL metrics table."""
-    try:
-        result = client.statement_execution.execute_statement(
-            warehouse_id=warehouse_id,
-            statement=f"SELECT 1 FROM {otel_table} LIMIT 1",
-        )
-        ok = result.status.state == "SUCCEEDED"
-        logger.info("OTEL table access validation for %s: %s", otel_table, "passed" if ok else "failed")
-        return ok
-    except Exception:
-        logger.exception("OTEL table access validation failed for %s", otel_table)
-        return False

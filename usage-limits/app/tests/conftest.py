@@ -25,7 +25,7 @@ def env_vars(monkeypatch):
     monkeypatch.setenv("SQL_WAREHOUSE_ID", "test-warehouse-id")
     monkeypatch.setenv("EVALUATION_INTERVAL_MINUTES", "5")
     monkeypatch.setenv("USER_SYNC_INTERVAL_MINUTES", "5")
-    monkeypatch.setenv("OTEL_TABLE", "")
+
 
 
 # ---------------------------------------------------------------------------
@@ -50,21 +50,7 @@ def mock_workspace_client():
         result=MagicMock(data_array=[]),
     )
 
-    # serving_endpoints — used for permission management and discovery
-    mock_endpoint = MagicMock()
-    mock_endpoint.name = "claude-code-endpoint"
-    mock_ai_gateway_config = MagicMock()
-    mock_ai_gateway_config.inference_table_config.catalog_name = "claude_code"
-    mock_ai_gateway_config.inference_table_config.schema_name = "default"
-    mock_ai_gateway_config.inference_table_config.table_name_prefix = "claude-code-endpoint"
-    mock_ai_gateway_config.inference_table_config.enabled = True
-    mock_endpoint.ai_gateway = mock_ai_gateway_config
-    mock_endpoint.config = MagicMock()
-    mock_endpoint.config.auto_capture_config = None
-
-    client.serving_endpoints.get.return_value = mock_endpoint
-    client.serving_endpoints.list.return_value = [mock_endpoint]
-
+    # serving_endpoints — used for permission management
     client.serving_endpoints.get_permissions.return_value = MagicMock(
         access_control_list=[]
     )
@@ -163,16 +149,14 @@ def sample_budget_config():
             "daily_dollar_limit": 50.00,
             "weekly_dollar_limit": 100.00,
             "monthly_dollar_limit": 300.00,
-            "is_admin": False,
         },
         {
             "id": 2,
             "entity_type": "user",
-            "entity_id": "admin@example.com",
-            "daily_dollar_limit": 50.00,
-            "weekly_dollar_limit": 100.00,
-            "monthly_dollar_limit": 300.00,
-            "is_admin": True,
+            "entity_id": "unlimited@example.com",
+            "daily_dollar_limit": None,
+            "weekly_dollar_limit": None,
+            "monthly_dollar_limit": None,
         },
     ]
 

@@ -79,6 +79,6 @@ else
 fi
 
 cat <<EOF
-{"additionalContext": "AI Gateway budget status: ${STATUS} — \$${USAGE} / \$${LIMIT} ${PERIOD}. ${REASON}"}
+{"additionalContext": "AI Gateway budget status: ${STATUS} — \$${USAGE} / \$${LIMIT} ${PERIOD}.${REASON}"}
 EOF
 exit 0

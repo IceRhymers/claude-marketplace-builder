@@ -1,0 +1,133 @@
+digraph UsageLimitsArchitecture {
+    rankdir=TB;
+    fontname="Helvetica";
+    node [fontname="Helvetica", fontsize=11, style="filled,rounded", shape=box, penwidth=1.2];
+    edge [fontname="Helvetica", fontsize=9, color="#555555", penwidth=1.2];
+    graph [compound=true, nodesep=0.6, ranksep=0.8];
+    bgcolor="white";
+
+    // ── Claude Code (User's Machine) ────────────────────────────
+    subgraph cluster_claude_code {
+        label="Claude Code (User's Machine)";
+        labeljust=l;
+        style="filled,rounded";
+        fillcolor="#F0F4FF";
+        color="#7B8EC8";
+        penwidth=1.5;
+        fontsize=13;
+        fontcolor="#333366";
+
+        user [label="Developer\n(submits prompt)", shape=ellipse, fillcolor="#DAE8FC", color="#6C8EBF"];
+
+        subgraph cluster_hooks {
+            label="budget-checker plugin";
+            labeljust=l;
+            style="filled,dashed,rounded";
+            fillcolor="#E8F0FE";
+            color="#9BAFD9";
+            fontsize=10;
+            fontcolor="#555588";
+
+            hook_start [label="SessionStart Hook\n(info mode)", fillcolor="#D5E8D4", color="#82B366"];
+            hook_prompt [label="UserPromptSubmit Hook\n(enforce mode)", fillcolor="#FFE6CC", color="#D6A756"];
+            script [label="check-budget.sh\n• get token via databricks CLI\n• call /api/check-budget\n• fail-open on errors", fillcolor="#F5F5F5", color="#999999", shape=box];
+        }
+
+        claude_model [label="Claude Model\n(AI Gateway)", fillcolor="#E1D5E7", color="#9673A6"];
+    }
+
+    // ── Databricks Platform ─────────────────────────────────────
+    subgraph cluster_databricks {
+        label="Databricks Platform";
+        labeljust=l;
+        style="filled,rounded";
+        fillcolor="#FFF8E7";
+        color="#C9A84C";
+        penwidth=1.5;
+        fontsize=13;
+        fontcolor="#665500";
+
+        // ── FastAPI Backend ──
+        subgraph cluster_backend {
+            label="Usage-Limits App (FastAPI)";
+            labeljust=l;
+            style="filled,rounded";
+            fillcolor="#FFFFFF";
+            color="#B0B0B0";
+            fontsize=11;
+
+            api_check [label="/api/check-budget\n(token auth)", fillcolor="#FFE6CC", color="#D6A756"];
+            api_rest [label="REST API\n/api/budgets\n/api/users\n/api/overview\n/api/my-usage", fillcolor="#DAE8FC", color="#6C8EBF"];
+            auth [label="Auth Resolver\n(token → user identity)", fillcolor="#F8CECC", color="#B85450"];
+            budget_eval [label="Budget Evaluator\nevaluate_budget()", fillcolor="#FFE6CC", color="#D6A756"];
+            cache [label="TTL Cache\n(30-60s)", fillcolor="#E8E8E8", color="#AAAAAA"];
+
+            subgraph cluster_bg {
+                label="Background Jobs (APScheduler)";
+                labeljust=l;
+                style="filled,dashed,rounded";
+                fillcolor="#F5F0FF";
+                color="#B0A0C0";
+                fontsize=9;
+
+                eval_cycle [label="Evaluation Cycle\n(every 5 min)\n• query usage\n• calc dollar costs\n• upsert snapshots\n• issue warnings", fillcolor="#E1D5E7", color="#9673A6"];
+                user_sync [label="User Sync\n(every 5 min)\n• discover new users\n• create default budgets", fillcolor="#E1D5E7", color="#9673A6"];
+            }
+        }
+
+        // ── React Frontend ──
+        frontend [label="React Dashboard (SPA)\n/overview  /budgets\n/users  /my-usage", fillcolor="#DAE8FC", color="#6C8EBF"];
+
+        // ── Data Stores ──
+        lakebase [label="Lakebase PostgreSQL\n(usage-limits instance)", shape=cylinder, fillcolor="#FFF2CC", color="#D6B656"];
+        warehouse [label="SQL Warehouse", shape=cylinder, fillcolor="#FFF2CC", color="#D6B656"];
+        gateway_table [label="system.ai_gateway.usage\n(token counts per request)", shape=cylinder, fillcolor="#FFF2CC", color="#D6B656"];
+
+        // ── Tables detail ──
+        tables [label="Tables:\nbudget_configs | default_budgets\nusage_snapshots | warnings\naudit_log", fillcolor="#FFFDE7", color="#D6B656", shape=note, fontsize=9];
+    }
+
+    // ── Edges ───────────────────────────────────────────────────
+
+    // User flow
+    user -> hook_start [label="session start", style=dashed, color="#82B366"];
+    user -> hook_prompt [label="submit prompt", color="#D6A756"];
+    hook_start -> script [color="#82B366"];
+    hook_prompt -> script [color="#D6A756"];
+
+    // Script → API
+    script -> api_check [label="GET /api/check-budget\n+ Bearer token", color="#D6A756", lhead=cluster_backend];
+
+    // API internals
+    api_check -> auth [label="resolve identity", color="#555555"];
+    api_check -> budget_eval [label="check limits", color="#555555"];
+    budget_eval -> cache [label="cached\nsnapshots", style=dashed, color="#AAAAAA"];
+
+    // Budget result back
+    api_check -> script [label="{allowed: true/false\nusage, limit, period}", color="#D6A756", style=dashed, dir=back, constraint=false];
+
+    // Enforcement result
+    script -> user [label="exit 0 → allow\nexit 2 → block", color="#D6A756", style=dashed, constraint=false];
+
+    // User proceeds to model
+    hook_prompt -> claude_model [label="if allowed", color="#82B366", style=dashed];
+
+    // Frontend
+    frontend -> api_rest [label="TanStack Query\n(admin & user views)", color="#6C8EBF"];
+    api_rest -> auth [color="#555555"];
+
+    // Backend → Lakebase
+    api_check -> lakebase [label="query budgets\n& snapshots", color="#D6B656"];
+    api_rest -> lakebase [label="CRUD", color="#D6B656"];
+    eval_cycle -> lakebase [label="upsert snapshots\n& warnings", color="#9673A6"];
+    user_sync -> lakebase [label="create budgets", color="#9673A6"];
+    lakebase -> tables [style=dashed, color="#D6B656", arrowhead=none];
+
+    // Background → Warehouse
+    eval_cycle -> warehouse [label="query usage\n(dollar costs)", color="#9673A6"];
+    user_sync -> warehouse [label="discover users", color="#9673A6"];
+    warehouse -> gateway_table [label="reads", color="#D6B656", style=dashed];
+
+    // Auth → Workspace
+    auth -> lakebase [label="OAuth token\ninjection", style=dotted, color="#B85450"];
+}

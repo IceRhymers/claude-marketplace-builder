@@ -12,7 +12,6 @@ from deps import get_config, get_client, get_current_user
 def mock_config():
     config = MagicMock()
     config.sql_warehouse_id = "test-wh"
-    config.otel_table = None
     return config
 
 

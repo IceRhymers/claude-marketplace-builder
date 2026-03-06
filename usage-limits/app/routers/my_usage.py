@@ -73,5 +73,4 @@ def get_my_budget(
         dollar_cost_1d=snapshot.get("dollar_cost_1d") if snapshot else None,
         dollar_cost_7d=snapshot.get("dollar_cost_7d") if snapshot else None,
         dollar_cost_30d=snapshot.get("dollar_cost_30d") if snapshot else None,
-        is_admin=budget.get("is_admin", False),
     )

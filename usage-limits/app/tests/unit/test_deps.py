@@ -70,18 +70,6 @@ class TestGetDb:
 
 
 @pytest.mark.unit
-class TestGetDiscovery:
-    def test_returns_discovery_from_app_state(self):
-        from deps import get_discovery
-
-        mock_request = MagicMock()
-        mock_request.app.state.discovery = MagicMock(system_table="ai_gateway")
-
-        result = get_discovery(mock_request)
-        assert result.system_table == "ai_gateway"
-
-
-@pytest.mark.unit
 class TestGetCurrentUser:
     @patch("deps.resolve_user_identity")
     def test_returns_identity_with_valid_token(self, mock_resolve):

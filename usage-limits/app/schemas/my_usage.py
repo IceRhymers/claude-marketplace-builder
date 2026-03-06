@@ -12,4 +12,3 @@ class MyBudgetStatus(BaseModel):
     dollar_cost_1d: float | None = None
     dollar_cost_7d: float | None = None
     dollar_cost_30d: float | None = None
-    is_admin: bool

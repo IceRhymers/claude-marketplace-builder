@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import create_engine, event, inspect
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from databricks.sdk import WorkspaceClient
@@ -73,10 +73,42 @@ def _migrate_to_dollar_schema(engine: Engine) -> None:
             Base.metadata.tables[table_name].drop(engine)
 
 
+def _add_is_custom_column(engine: Engine) -> None:
+    """Add is_custom column to budget_configs if it doesn't exist."""
+    insp = inspect(engine)
+    if not insp.has_table("budget_configs"):
+        return
+    columns = {c["name"] for c in insp.get_columns("budget_configs")}
+    if "is_custom" not in columns:
+        logger.info("Adding is_custom column to budget_configs")
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE budget_configs ADD COLUMN is_custom BOOLEAN DEFAULT FALSE"))
+
+
+def _drop_is_admin_column(engine: Engine) -> None:
+    """Migrate is_admin=True rows to null limits, then drop the column."""
+    insp = inspect(engine)
+    if not insp.has_table("budget_configs"):
+        return
+    columns = {c["name"] for c in insp.get_columns("budget_configs")}
+    if "is_admin" not in columns:
+        return
+    logger.info("Migrating is_admin column: converting admin rows to null limits")
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE budget_configs "
+            "SET daily_dollar_limit=NULL, weekly_dollar_limit=NULL, monthly_dollar_limit=NULL, is_custom=TRUE "
+            "WHERE is_admin=TRUE"
+        ))
+        conn.execute(text("ALTER TABLE budget_configs DROP COLUMN is_admin"))
+
+
 def init_schema(engine: Engine) -> None:
     """Create all application tables (idempotent), migrating old schema if needed."""
     logger.info("Initializing database schema")
     _migrate_to_dollar_schema(engine)
+    _add_is_custom_column(engine)
+    _drop_is_admin_column(engine)
     Base.metadata.create_all(engine)
 
 

@@ -40,7 +40,6 @@ class TestRunEvaluationCycle:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": 100.0,
             "monthly_dollar_limit": 300.0,
-            "is_admin": False,
         }
 
         violation = MagicMock()
@@ -76,7 +75,7 @@ class TestRunEvaluationCycle:
     @patch("core.evaluator.evaluate_budget")
     @patch("core.evaluator.upsert_usage_snapshots")
     @patch("core.evaluator.get_dollar_usage")
-    def test_admin_user_skipped(
+    def test_unlimited_user_not_warned(
         self,
         mock_dollar_usage, mock_upsert,
         mock_eval, mock_budget, mock_boundaries,
@@ -87,16 +86,19 @@ class TestRunEvaluationCycle:
         session = MagicMock()
 
         mock_dollar_usage.return_value = [{
-            "requester": "admin@example.com",
+            "requester": "unlimited@example.com",
             "dollar_cost_1d": 52.30,
             "dollar_cost_7d": 52.30,
             "dollar_cost_30d": 52.30,
         }]
 
         mock_budget.return_value = {
-            "daily_dollar_limit": 50.0,
-            "is_admin": True,
+            "daily_dollar_limit": None,
+            "weekly_dollar_limit": None,
+            "monthly_dollar_limit": None,
         }
+
+        mock_eval.return_value = MagicMock(exceeded=False, violations=[])
 
         mock_active.return_value = []
         mock_expired.return_value = []
@@ -104,8 +106,8 @@ class TestRunEvaluationCycle:
         from core.evaluator import run_evaluation_cycle
         run_evaluation_cycle(client, session, "wh-id")
 
+        mock_eval.assert_called_once()
         mock_add_warning.assert_not_called()
-        mock_eval.assert_not_called()
 
     @patch("core.evaluator.log_audit_entry")
     @patch("core.evaluator.mark_warning_resolved")
@@ -170,7 +172,6 @@ class TestRunEvaluationCycle:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": 100.0,
             "monthly_dollar_limit": 300.0,
-            "is_admin": False,
         }
 
         violation = MagicMock()
@@ -221,7 +222,6 @@ class TestRunEvaluationCycle:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": 100.0,
             "monthly_dollar_limit": 300.0,
-            "is_admin": False,
         }
 
         mock_eval.return_value = MagicMock(exceeded=False, violations=[])

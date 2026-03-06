@@ -12,7 +12,6 @@ class BudgetConfigIn(BaseModel):
     daily_dollar_limit: float | None = None
     weekly_dollar_limit: float | None = None
     monthly_dollar_limit: float | None = None
-    is_admin: bool = False
 
 
 class BudgetConfigOut(BaseModel):
@@ -22,7 +21,7 @@ class BudgetConfigOut(BaseModel):
     daily_dollar_limit: float | None = None
     weekly_dollar_limit: float | None = None
     monthly_dollar_limit: float | None = None
-    is_admin: bool
+    is_custom: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
     created_by: str | None = None

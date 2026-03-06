@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from core.budget import save_budget_config, save_default_budget
+from core.budget import propagate_default_budget, save_budget_config, save_default_budget
 from core.models import BudgetConfig, DefaultBudget
 from core.warnings import log_audit_entry
 from deps import get_db, require_admin
@@ -29,13 +29,12 @@ def save_budget(body: BudgetConfigIn, session: Session = Depends(get_db)):
         daily_limit=body.daily_dollar_limit,
         weekly_limit=body.weekly_dollar_limit,
         monthly_limit=body.monthly_dollar_limit,
-        is_admin=body.is_admin,
+        is_custom=True,
     )
     log_audit_entry(session, action="save_budget", user_id=body.entity_id, details={
         "daily": body.daily_dollar_limit,
         "weekly": body.weekly_dollar_limit,
         "monthly": body.monthly_dollar_limit,
-        "is_admin": body.is_admin,
     })
     row = (
         session.query(BudgetConfig)
@@ -72,10 +71,17 @@ def save_default(body: DefaultBudgetIn, session: Session = Depends(get_db)):
         weekly_limit=body.weekly_dollar_limit,
         monthly_limit=body.monthly_dollar_limit,
     )
+    propagated_count = propagate_default_budget(
+        session,
+        daily_limit=body.daily_dollar_limit,
+        weekly_limit=body.weekly_dollar_limit,
+        monthly_limit=body.monthly_dollar_limit,
+    )
     log_audit_entry(session, action="save_default_budget", details={
         "daily": body.daily_dollar_limit,
         "weekly": body.weekly_dollar_limit,
         "monthly": body.monthly_dollar_limit,
+        "propagated_count": propagated_count,
     })
     row = session.query(DefaultBudget).order_by(DefaultBudget.id.desc()).first()
     return DefaultBudgetOut(**row.to_dict())

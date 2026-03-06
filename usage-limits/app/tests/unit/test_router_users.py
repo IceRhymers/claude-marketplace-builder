@@ -117,7 +117,6 @@ class TestGetUserBudget:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": 100.0,
             "monthly_dollar_limit": 300.0,
-            "is_admin": False,
             "created_at": None,
             "updated_at": None,
             "created_by": None,

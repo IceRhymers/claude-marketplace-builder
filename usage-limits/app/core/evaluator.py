@@ -44,10 +44,6 @@ def run_evaluation_cycle(client, session: Session, warehouse_id: str) -> None:
         if budget is None:
             continue
 
-        # Skip admin users
-        if budget.get("is_admin"):
-            continue
-
         result = evaluate_budget(
             daily_usage=float(row.get("dollar_cost_1d", 0)),
             weekly_usage=float(row.get("dollar_cost_7d", 0)),

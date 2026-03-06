@@ -46,7 +46,7 @@ function UserDetailPage() {
           </Link>
         </Button>
         <h1 className="text-2xl font-bold">{userEmail}</h1>
-        {budget.data?.is_admin && <Badge>Admin</Badge>}
+        {budget.data && budget.data.daily_dollar_limit == null && budget.data.weekly_dollar_limit == null && budget.data.monthly_dollar_limit == null && <Badge>Unlimited</Badge>}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

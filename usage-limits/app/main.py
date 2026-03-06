@@ -10,21 +10,19 @@ from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from databricks.sdk import WorkspaceClient
 from fastapi import FastAPI
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 
 from api import budget_router
 from core.config import AppConfig
 from core.db import create_engine_from_config, init_schema, make_session_factory
-from core.discovery import discover_data_sources
 from core.evaluator import run_evaluation_cycle, run_user_sync_cycle
 from routers.overview import router as overview_router
 from routers.users import router as users_router
 from routers.budgets import router as budgets_router
 from routers.warnings import router as warnings_router
 from routers.audit import router as audit_router
-from routers.otel import router as otel_router
-from routers.discovery import router as discovery_router
 from routers.me import router as me_router
 from routers.my_usage import router as my_usage_router
 
@@ -35,9 +33,14 @@ class SPAStaticFiles(StaticFiles):
     """Serve index.html for any path not found as a static file (SPA catch-all)."""
 
     async def get_response(self, path: str, scope) -> Response:
-        response = await super().get_response(path, scope)
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
         if response.status_code == 404:
-            response = await super().get_response(".", scope)
+            response = await super().get_response("index.html", scope)
         return response
 
 
@@ -54,12 +57,9 @@ async def lifespan(app: FastAPI):
     engine = create_engine_from_config(config)
     init_schema(engine)
     session_factory = make_session_factory(engine)
-    discovery = discover_data_sources(client, config.sql_warehouse_id)
-
     app.state.config = config
     app.state.client = client
     app.state.session_factory = session_factory
-    app.state.discovery = discovery
 
     def _run_cycle():
         session = session_factory()
@@ -105,8 +105,6 @@ app.include_router(users_router)
 app.include_router(budgets_router)
 app.include_router(warnings_router)
 app.include_router(audit_router)
-app.include_router(otel_router)
-app.include_router(discovery_router)
 app.include_router(me_router)
 app.include_router(my_usage_router)
 app.include_router(budget_router)

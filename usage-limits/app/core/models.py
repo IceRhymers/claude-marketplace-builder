@@ -36,7 +36,7 @@ class BudgetConfig(Base):
     daily_dollar_limit: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     weekly_dollar_limit: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     monthly_dollar_limit: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now()
     )

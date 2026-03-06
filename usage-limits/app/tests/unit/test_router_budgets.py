@@ -27,7 +27,7 @@ class TestListBudgets:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": 100.0,
             "monthly_dollar_limit": 300.0,
-            "is_admin": False,
+            "is_custom": False,
             "created_at": None,
             "updated_at": None,
             "created_by": None,
@@ -39,6 +39,7 @@ class TestListBudgets:
         data = response.json()
         assert len(data) == 1
         assert data[0]["entity_id"] == "u@e.com"
+        assert data[0]["is_custom"] is False
 
     def test_returns_empty_list(self, test_client, mock_session):
         mock_session.query.return_value.all.return_value = []
@@ -61,7 +62,7 @@ class TestSaveBudget:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": None,
             "monthly_dollar_limit": None,
-            "is_admin": False,
+            "is_custom": True,
             "created_at": None,
             "updated_at": None,
             "created_by": None,
@@ -76,6 +77,9 @@ class TestSaveBudget:
         data = response.json()
         assert data["entity_id"] == "u@e.com"
         mock_save.assert_called_once()
+        # Admin-set budgets must pass is_custom=True
+        call_kwargs = mock_save.call_args
+        assert call_kwargs.kwargs.get("is_custom") is True or (len(call_kwargs.args) > 7 and call_kwargs.args[7] is True)
         mock_audit.assert_called_once()
 
 
@@ -127,9 +131,10 @@ class TestGetDefaultBudget:
 
 @pytest.mark.unit
 class TestSaveDefaultBudget:
+    @patch("routers.budgets.propagate_default_budget")
     @patch("routers.budgets.save_default_budget")
     @patch("routers.budgets.log_audit_entry")
-    def test_saves_default(self, mock_audit, mock_save, test_client, mock_session):
+    def test_saves_default(self, mock_audit, mock_save, mock_propagate, test_client, mock_session):
         mock_row = MagicMock()
         mock_row.to_dict.return_value = {
             "id": 1,
@@ -140,6 +145,7 @@ class TestSaveDefaultBudget:
             "updated_by": None,
         }
         mock_session.query.return_value.order_by.return_value.first.return_value = mock_row
+        mock_propagate.return_value = 5
 
         response = test_client.post("/api/budgets/default", json={
             "daily_dollar_limit": 50.0,
@@ -148,6 +154,12 @@ class TestSaveDefaultBudget:
         })
         assert response.status_code == 200
         mock_save.assert_called_once()
+        mock_propagate.assert_called_once_with(
+            mock_session,
+            daily_limit=50.0,
+            weekly_limit=100.0,
+            monthly_limit=300.0,
+        )
 
 
 @pytest.mark.unit

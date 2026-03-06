@@ -87,7 +87,7 @@ def evaluate_budget(
 
     for reason, usage, limit in checks:
         if limit is not None and (limit == 0 or usage > limit):
-            violations.append(BudgetViolation(reason=reason, usage=usage, limit=limit))
+            violations.append(BudgetViolation(reason=reason, usage=float(usage), limit=float(limit)))
 
     return BudgetResult(exceeded=len(violations) > 0, violations=violations)
 
@@ -112,7 +112,6 @@ def get_user_budget(session: Session, user_email: str) -> dict | None:
         d = default.to_dict()
         d["entity_type"] = "default"
         d["entity_id"] = user_email
-        d["is_admin"] = False
         d["created_at"] = None
         d["created_by"] = None
         return d
@@ -128,7 +127,7 @@ def save_budget_config(
     daily_limit: int | None,
     weekly_limit: int | None,
     monthly_limit: int | None,
-    is_admin: bool = False,
+    is_custom: bool = False,
 ) -> None:
     """Insert or update a budget config (upsert on entity_type + entity_id)."""
     stmt = pg_insert(BudgetConfig).values(
@@ -137,7 +136,7 @@ def save_budget_config(
         daily_dollar_limit=daily_limit,
         weekly_dollar_limit=weekly_limit,
         monthly_dollar_limit=monthly_limit,
-        is_admin=is_admin,
+        is_custom=is_custom,
         updated_at=func.now(),
     )
     stmt = stmt.on_conflict_do_update(
@@ -146,7 +145,7 @@ def save_budget_config(
             "daily_dollar_limit": stmt.excluded.daily_dollar_limit,
             "weekly_dollar_limit": stmt.excluded.weekly_dollar_limit,
             "monthly_dollar_limit": stmt.excluded.monthly_dollar_limit,
-            "is_admin": stmt.excluded.is_admin,
+            "is_custom": stmt.excluded.is_custom,
             "updated_at": func.now(),
         },
     )
@@ -203,11 +202,33 @@ def sync_user_budgets(session: Session, discovered_emails: list[str]) -> list[st
                 daily_limit=daily,
                 weekly_limit=weekly,
                 monthly_limit=monthly,
+                is_custom=False,
             )
             new_emails.append(email)
 
     logger.info("Synced %d new user budgets out of %d discovered", len(new_emails), len(discovered_emails))
     return new_emails
+
+
+def propagate_default_budget(
+    session: Session,
+    daily_limit: float | None,
+    weekly_limit: float | None,
+    monthly_limit: float | None,
+) -> int:
+    """Bulk-update all non-custom budget rows to match the new default limits."""
+    count = (
+        session.query(BudgetConfig)
+        .filter(BudgetConfig.is_custom == False)  # noqa: E712
+        .update({
+            BudgetConfig.daily_dollar_limit: daily_limit,
+            BudgetConfig.weekly_dollar_limit: weekly_limit,
+            BudgetConfig.monthly_dollar_limit: monthly_limit,
+            BudgetConfig.updated_at: func.now(),
+        })
+    )
+    session.commit()
+    return count
 
 
 def save_default_budget(

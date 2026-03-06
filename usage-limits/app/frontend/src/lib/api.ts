@@ -49,7 +49,7 @@ export interface BudgetConfig {
   daily_dollar_limit: number | null;
   weekly_dollar_limit: number | null;
   monthly_dollar_limit: number | null;
-  is_admin: boolean;
+  is_custom: boolean;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -81,24 +81,6 @@ export interface AuditLogEntry {
   created_at: string | null;
 }
 
-export interface OtelStatus {
-  enabled: boolean;
-  otel_table: string | null;
-}
-
-export interface OtelUserSummary {
-  user_id: string | null;
-  total_value: number;
-  metric_count: number;
-}
-
-export interface OtelMetric {
-  metric_name: string | null;
-  user_id: string | null;
-  token_count: number | null;
-  event_time: string | null;
-}
-
 // Auth
 export interface MeResponse {
   email: string;
@@ -115,7 +97,6 @@ export interface MyBudgetStatus {
   dollar_cost_1d: number | null;
   dollar_cost_7d: number | null;
   dollar_cost_30d: number | null;
-  is_admin: boolean;
 }
 export const getMySnapshot = () => api.get<UserSnapshot | null>("/api/my-usage/snapshot").then((r) => r.data);
 export const getMyHistory = (days = 30) => api.get<UserUsageHistory>(`/api/my-usage/history?days=${days}`).then((r) => r.data);
@@ -136,7 +117,7 @@ export const getUserBudget = (email: string) =>
 
 // Budgets
 export const listBudgets = () => api.get<BudgetConfig[]>("/api/budgets/").then((r) => r.data);
-export const saveBudget = (data: { entity_id: string; daily_dollar_limit?: number | null; weekly_dollar_limit?: number | null; monthly_dollar_limit?: number | null; is_admin?: boolean }) =>
+export const saveBudget = (data: { entity_id: string; daily_dollar_limit?: number | null; weekly_dollar_limit?: number | null; monthly_dollar_limit?: number | null }) =>
   api.post<BudgetConfig>("/api/budgets/", data).then((r) => r.data);
 export const deleteBudget = (id: number) => api.delete(`/api/budgets/${id}`).then((r) => r.data);
 export const getDefaultBudget = () => api.get<DefaultBudget | null>("/api/budgets/default").then((r) => r.data);
@@ -150,11 +131,3 @@ export const resolveWarning = (warningId: number) => api.post("/api/warnings/res
 // Audit
 export const listAuditLog = (limit = 100) => api.get<AuditLogEntry[]>(`/api/audit/?limit=${limit}`).then((r) => r.data);
 
-// OTEL
-export const getOtelStatus = () => api.get<OtelStatus>("/api/otel/status").then((r) => r.data);
-export const getOtelUserSummary = (days = 7) => api.get<OtelUserSummary[]>(`/api/otel/summary?days=${days}`).then((r) => r.data);
-export const getOtelMetrics = (filter?: string, days = 7) => {
-  const params = new URLSearchParams({ days: String(days) });
-  if (filter) params.set("metric_filter", filter);
-  return api.get<OtelMetric[]>(`/api/otel/metrics?${params}`).then((r) => r.data);
-};

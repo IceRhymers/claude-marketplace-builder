@@ -105,7 +105,6 @@ class TestMyUsageBudget:
             "daily_dollar_limit": 50.0,
             "weekly_dollar_limit": 100.0,
             "monthly_dollar_limit": 300.0,
-            "is_admin": False,
         }
         mock_snapshot.return_value = {
             "dollar_cost_1d": 10.0,
@@ -118,7 +117,7 @@ class TestMyUsageBudget:
         data = response.json()
         assert data["daily_dollar_limit"] == 50.0
         assert data["dollar_cost_1d"] == 10.0
-        assert data["is_admin"] is False
+        assert "is_admin" not in data
 
     @patch("routers.my_usage.get_usage_snapshot")
     @patch("routers.my_usage.get_user_budget")

@@ -1,6 +1,6 @@
 import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router";
 import { QueryClient } from "@tanstack/react-query";
-import { BarChart3, Users, Wallet, Activity, User } from "lucide-react";
+import { BarChart3, Users, Wallet, User } from "lucide-react";
 import { ModeToggle } from "@/components/apx/mode-toggle";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,7 +18,6 @@ const adminNavItems = [
   { to: "/overview", label: "Overview", icon: BarChart3 },
   { to: "/users", label: "Users", icon: Users },
   { to: "/budgets", label: "Budgets", icon: Wallet },
-  { to: "/otel", label: "OTEL", icon: Activity },
 ] as const;
 
 const userNavItems = [

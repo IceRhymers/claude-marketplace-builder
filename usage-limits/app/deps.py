@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from core.auth import UserIdentity, resolve_user_identity
 from core.config import AppConfig
-from core.discovery import DiscoveryResult
 
 
 def get_config(request: Request) -> AppConfig:
@@ -29,11 +28,6 @@ def get_db(request: Request) -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
-
-
-def get_discovery(request: Request) -> DiscoveryResult:
-    """Return the singleton DiscoveryResult from app state."""
-    return request.app.state.discovery
 
 
 def get_current_user(request: Request) -> UserIdentity:

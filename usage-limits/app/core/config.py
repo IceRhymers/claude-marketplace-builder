@@ -19,7 +19,6 @@ class AppConfig:
     evaluation_interval_minutes: int
     user_sync_interval_minutes: int
     budget_api_port: int
-    otel_table: str | None
     admin_groups: list[str]
 
     @classmethod
@@ -38,8 +37,6 @@ class AppConfig:
             if not os.environ.get(var):
                 raise ValueError(f"Required environment variable {var} is not set")
 
-        otel_table = os.environ.get("OTEL_TABLE", "").strip()
-
         return cls(
             pg_host=os.environ["PGHOST"],
             pg_database=os.environ["PGDATABASE"],
@@ -54,7 +51,6 @@ class AppConfig:
             budget_api_port=int(
                 os.environ.get("BUDGET_API_PORT", "8502")
             ),
-            otel_table=otel_table if otel_table else None,
             admin_groups=parse_admin_groups(
                 os.environ.get("ADMIN_GROUPS", "")
             ),

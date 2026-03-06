@@ -14,5 +14,3 @@ env:
     valueFrom: sql-warehouse
   - name: EVALUATION_INTERVAL_MINUTES
     value: "5"
-  - name: OTEL_TABLE
-    value: ""
