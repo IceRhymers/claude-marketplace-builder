@@ -14,6 +14,11 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 
+def _make_skills_config():
+    from core.skills import SkillsConfig
+    return SkillsConfig(version="v1.0.0", skills={}, mcp_config={"mcpServers": {}})
+
+
 def make_sqlite_setup():
     """Create a StaticPool SQLite in-memory engine + session factory."""
     from core.models import Base
@@ -69,7 +74,7 @@ class TestStreamEndpoint:
         mock_pool = MagicMock()
         mock_pool.get_or_create = AsyncMock(return_value=scripted_agent)
 
-        mock_skills = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+        mock_skills = _make_skills_config()
 
         def override_get_db():
             s = SessionLocal()
@@ -196,7 +201,7 @@ class TestStreamEndpoint:
         mock_pool = MagicMock()
         mock_pool.get_or_create = AsyncMock(return_value=scripted_agent)
 
-        mock_skills = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+        mock_skills = _make_skills_config()
 
         def override_get_db():
             s = SessionLocal()

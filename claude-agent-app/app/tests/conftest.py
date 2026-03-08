@@ -6,6 +6,7 @@ import asyncio
 import io
 import os
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -79,14 +80,78 @@ def session_dir_with_files(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_skills_config():
-    """Return a SkillsConfig with one sample skill and empty MCP config."""
-    from core.skills import SkillsConfig
+def mock_skills_config(tmp_path):
+    """Return a SkillsConfig with two sample skills (skill-a, skill-b) and empty MCP config.
+
+    Creates a real directory structure:
+      <tmp>/.claude/skills/skill-a/SKILL.md
+      <tmp>/.claude/skills/skill-b/SKILL.md
+    """
+    from core.skills import SkillsConfig, SkillDefinition
+
+    skills_base = tmp_path / ".claude" / "skills"
+
+    skill_a_dir = skills_base / "skill-a"
+    skill_a_dir.mkdir(parents=True, exist_ok=True)
+    (skill_a_dir / "SKILL.md").write_text("# Skill A\nThis is skill A.")
+
+    skill_b_dir = skills_base / "skill-b"
+    skill_b_dir.mkdir(parents=True, exist_ok=True)
+    (skill_b_dir / "SKILL.md").write_text("# Skill B\nThis is skill B.")
+
     return SkillsConfig(
-        version="v0.1.0",
-        skill_contents=["# Getting Started\nThis is a test skill."],
+        version="test",
+        skills={
+            "skill-a": SkillDefinition(
+                name="skill-a",
+                path=skill_a_dir,
+                has_scripts=False,
+                has_references=False,
+            ),
+            "skill-b": SkillDefinition(
+                name="skill-b",
+                path=skill_b_dir,
+                has_scripts=False,
+                has_references=False,
+            ),
+        },
         mcp_config={"mcpServers": {}},
     )
+
+
+@pytest.fixture
+def mock_user_skill_prefs():
+    """Return a mock of get_user_skill_prefs that returns all skills enabled by default.
+
+    Returns {"skill-a", "skill-b"} matching the mock_skills_config fixture.
+    """
+    from unittest.mock import MagicMock
+    mock_prefs = MagicMock(return_value={"skill-a", "skill-b"})
+    return mock_prefs
+
+
+@pytest.fixture
+def session_dir_with_skill_structure(tmp_path):
+    """Create a tmp dir simulating a resumed session with skill already present.
+
+    Structure:
+      <tmp>/
+      └── .claude/
+          └── skills/
+              └── test-skill/
+                  ├── SKILL.md
+                  └── scripts/
+                      └── run_test.py
+    """
+    skill_dir = tmp_path / ".claude" / "skills" / "test-skill"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    (skill_dir / "SKILL.md").write_text("# Test Skill\nThis is a test skill.")
+
+    scripts_dir = skill_dir / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    (scripts_dir / "run_test.py").write_text("#!/usr/bin/env python3\nprint('test')\n")
+
+    return tmp_path
 
 
 # ---------------------------------------------------------------------------

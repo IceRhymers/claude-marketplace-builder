@@ -1,4 +1,4 @@
-"""SkillsConfig loader — reads SKILL.md files and .mcp.json from a Volume path."""
+"""SkillsConfig loader — reads manifest.json and .mcp.json from a Volume path."""
 
 from __future__ import annotations
 
@@ -6,7 +6,6 @@ import copy
 import dataclasses
 import json
 import logging
-import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -15,15 +14,24 @@ logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
+class SkillDefinition:
+    """Metadata and path for a single skill in the Volume artifact."""
+    name: str
+    path: Path
+    has_scripts: bool
+    has_references: bool
+
+
+@dataclasses.dataclass
 class SkillsConfig:
     """Loaded skill definitions and MCP server configuration."""
     version: str
-    skill_contents: list[str]
+    skills: dict[str, SkillDefinition]
     mcp_config: dict[str, Any]
 
 
 # Module-level current config (initially empty)
-current_config: SkillsConfig = SkillsConfig(version="", skill_contents=[], mcp_config={})
+current_config: SkillsConfig = SkillsConfig(version="", skills={}, mcp_config={})
 
 # Lock protecting reads and writes to current_config from multiple threads
 _config_lock = threading.Lock()
@@ -43,13 +51,13 @@ def load_config_from_volume(volume_path: str) -> SkillsConfig:
     latest_path = Path(volume_path) / "latest.json"
     if not latest_path.exists():
         logger.warning("latest.json not found at %s", latest_path)
-        return SkillsConfig(version="", skill_contents=[], mcp_config={})
+        return SkillsConfig(version="", skills={}, mcp_config={})
 
     try:
         latest = json.loads(latest_path.read_text())
     except (json.JSONDecodeError, OSError) as exc:
         logger.error("Failed to parse latest.json: %s", exc)
-        return SkillsConfig(version="", skill_contents=[], mcp_config={})
+        return SkillsConfig(version="", skills={}, mcp_config={})
 
     version = latest.get("version", "")
     artifact_rel = latest.get("path", "")
@@ -57,15 +65,35 @@ def load_config_from_volume(volume_path: str) -> SkillsConfig:
 
     if not artifact_dir.exists():
         logger.warning("Artifact directory not found: %s", artifact_dir)
-        return SkillsConfig(version=version, skill_contents=[], mcp_config={})
+        return SkillsConfig(version=version, skills={}, mcp_config={})
 
-    # Load SKILL.md files
-    skill_contents: list[str] = []
-    for skill_md in sorted(artifact_dir.rglob("SKILL.md")):
+    # Load manifest.json
+    manifest_path = artifact_dir / "manifest.json"
+    skills: dict[str, SkillDefinition] = {}
+
+    if not manifest_path.exists():
+        logger.warning("manifest.json not found in artifact directory: %s", artifact_dir)
+    else:
         try:
-            skill_contents.append(skill_md.read_text())
-        except OSError as exc:
-            logger.warning("Failed to read %s: %s", skill_md, exc)
+            manifest = json.loads(manifest_path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.error("Failed to parse manifest.json: %s", exc)
+            return SkillsConfig(version="", skills={}, mcp_config={})
+
+        for skill_entry in manifest.get("skills", []):
+            skill_name = skill_entry.get("name", "")
+            if not skill_name:
+                continue
+            skill_path = artifact_dir / "skills" / skill_name
+            if not skill_path.exists():
+                logger.warning("Skill directory not found, skipping: %s", skill_path)
+                continue
+            skills[skill_name] = SkillDefinition(
+                name=skill_name,
+                path=skill_path,
+                has_scripts=bool(skill_entry.get("has_scripts", False)),
+                has_references=bool(skill_entry.get("has_references", False)),
+            )
 
     # Load .mcp.json
     mcp_json_path = artifact_dir / ".mcp.json"
@@ -76,7 +104,7 @@ def load_config_from_volume(volume_path: str) -> SkillsConfig:
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Failed to parse .mcp.json: %s", exc)
 
-    return SkillsConfig(version=version, skill_contents=skill_contents, mcp_config=mcp_config)
+    return SkillsConfig(version=version, skills=skills, mcp_config=mcp_config)
 
 
 def substitute_token(mcp_config: dict[str, Any], access_token: str) -> dict[str, Any]:
@@ -123,6 +151,6 @@ def reload_if_changed(volume_path: str) -> None:
         with _config_lock:
             current_config = new_config
         logger.info("reload_if_changed: reloaded config version=%s skills=%d",
-                    new_config.version, len(new_config.skill_contents))
+                    new_config.version, len(new_config.skills))
     except Exception as exc:
         logger.error("reload_if_changed: reload failed, retaining previous config: %s", exc)

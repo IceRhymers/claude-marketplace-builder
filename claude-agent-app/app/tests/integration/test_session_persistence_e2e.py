@@ -18,6 +18,11 @@ VOLUME_BASE = "/Volumes/catalog/schema/agent-sessions"
 TEST_USER_ID = "alice@example.com"
 
 
+def _make_skills_config():
+    from core.skills import SkillsConfig
+    return SkillsConfig(version="v1.0.0", skills={}, mcp_config={"mcpServers": {}})
+
+
 def _make_file_info(path: str, is_directory: bool = False) -> MagicMock:
     info = MagicMock()
     info.path = path
@@ -64,7 +69,7 @@ class TestFileSyncAndRestoreRoundTrip:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
 
             # Phase 1: Get agent and write a file to session dir
             agent1 = await pool.get_or_create(
@@ -113,7 +118,7 @@ class TestFileSyncAndRestoreRoundTrip:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
 
             agent = await pool.get_or_create(
                 conv_id, TEST_USER_ID, "tok", skills_config, db=populated_messages_db
@@ -151,7 +156,7 @@ class TestDeleteConversationE2E:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(conv_id, TEST_USER_ID, "tok", skills_config, db=db_session)
 
             # Perform delete (evict purge=True + volume delete + db delete)

@@ -29,68 +29,99 @@ class AgentEntry:
     conversation_id: str = ""
 
 
-def build_agent(system_prompt: str, mcp_config: dict, session_dir: Path) -> Any:
-    """Construct a Claude agent with the given system prompt and MCP config.
+def build_agent(
+    session_dir: Path,
+    mcp_config: dict,
+    enabled_skill_names: set[str],
+    skills_config: SkillsConfig,
+) -> Any:
+    """Construct a Claude agent, mounting enabled skills into session sandbox.
 
-    This is a module-level function so tests can easily patch it.
-    In production, this would use the Claude Agent SDK.
+    Steps:
+    1. Create session_dir/.claude/skills/ directory
+    2. Copy each enabled skill directory from skills_config into the mount point
+    3. Initialise Claude Agent SDK (with fallback to StubAgent)
+
+    Args:
+        session_dir: The sandbox directory for this conversation.
+        mcp_config: MCP server configuration (already token-substituted).
+        enabled_skill_names: Set of skill names the user has enabled.
+        skills_config: Full SkillsConfig with SkillDefinition paths.
+
+    Returns:
+        An agent instance with an async `stream(message)` generator method.
+
+    Raises:
+        RuntimeError: If skill directory copy fails.
     """
-    # Inject session dir constraint into system prompt
-    sandboxed_prompt = (
-        f"{system_prompt}\n\n"
-        f"## File I/O Constraint\n"
-        f"All file operations MUST use the session working directory: `{session_dir}`.\n"
-        f"Never read or write files outside this directory. Use relative paths that resolve within it."
-    )
+    # Step 1: Create .claude/skills/ directory
+    skills_mount = session_dir / ".claude" / "skills"
+    skills_mount.mkdir(parents=True, exist_ok=True)
 
-    # Import here to avoid import errors when SDK is unavailable in tests
+    # Step 2: Copy enabled skill directories
+    for name in enabled_skill_names:
+        if name in skills_config.skills:
+            skill_def = skills_config.skills[name]
+            dest = skills_mount / name
+            if not dest.exists():
+                shutil.copytree(str(skill_def.path), str(dest))
+
+    # Step 3: Initialise Claude Agent SDK (with fallback)
     try:
-        import anthropic
-        client = anthropic.Anthropic()
+        from claude_agent_sdk import query, ClaudeAgentOptions
 
-        class SimpleAgent:
-            """Minimal agent wrapper for streaming responses."""
-            def __init__(self, client, system_prompt, mcp_config, session_dir):
-                self._client = client
-                self._system_prompt = system_prompt
+        options = ClaudeAgentOptions(
+            cwd=str(session_dir),
+            setting_sources=["project"],
+            allowed_tools=["Skill", "Bash", "Read", "Write"],
+        )
+
+        class SDKAgent:
+            def __init__(self, options, mcp_config, session_dir):
+                self._options = options
                 self._mcp_config = mcp_config
                 self._session_dir = session_dir
-                self._cwd = str(session_dir)
                 self._history: list[dict] = []
 
             async def stream(self, message: str):
-                """Stream a response, yielding event dicts."""
+                """Stream a response using claude_agent_sdk.query()."""
                 self._history.append({"role": "user", "content": message})
-                # Use the Messages API for streaming
+                full_text = ""
                 try:
-                    with self._client.messages.stream(
-                        model="claude-sonnet-4-5",
-                        max_tokens=4096,
-                        system=self._system_prompt,
-                        messages=self._history,
-                    ) as stream:
-                        full_text = ""
-                        for text in stream.text_stream:
-                            full_text += text
-                            yield {"type": "text_delta", "text": text}
-                        self._history.append({"role": "assistant", "content": full_text})
+                    async for sdk_message in query(prompt=message, options=self._options):
+                        if hasattr(sdk_message, "type"):
+                            if sdk_message.type == "text":
+                                full_text += sdk_message.text
+                                yield {"type": "text_delta", "text": sdk_message.text}
+                            elif sdk_message.type == "tool_use":
+                                yield {
+                                    "type": "tool_use",
+                                    "tool": sdk_message.name,
+                                    "input": sdk_message.input,
+                                }
+                            elif sdk_message.type == "tool_result":
+                                yield {
+                                    "type": "tool_result",
+                                    "tool": sdk_message.tool_use_id,
+                                    "result": sdk_message.content,
+                                }
                 except Exception as exc:
-                    logger.error("Agent stream error: %s", exc)
+                    logger.error("SDK stream error: %s", exc)
                     raise
+                self._history.append({"role": "assistant", "content": full_text})
                 yield {"type": "done"}
 
             def close(self):
                 pass
 
-        return SimpleAgent(client, sandboxed_prompt, mcp_config, session_dir)
+        return SDKAgent(options, mcp_config, session_dir)
+
     except ImportError:
-        logger.warning("anthropic SDK not available — returning stub agent")
+        logger.warning("claude_agent_sdk not available — falling back to stub agent")
 
         class StubAgent:
             def __init__(self, session_dir: Path):
                 self._session_dir = session_dir
-                self._cwd = str(session_dir)
-                self._system_prompt = sandboxed_prompt
                 self._history: list[dict] = []
 
             async def stream(self, message: str):
@@ -167,14 +198,13 @@ class AgentPool:
             user_id: Owner of this conversation.
             access_token: User's OAuth token for MCP connections.
             skills_config: Current loaded skills/MCP configuration.
-            db: SQLAlchemy Session for history hydration (optional).
+            db: SQLAlchemy Session for history hydration and pref lookup (optional).
 
         Returns:
             Agent instance.
 
         Raises:
-            RuntimeError: If agent initialization fails (MCP connection error, etc.)
-                          or if history hydration fails.
+            RuntimeError: If agent initialization fails.
         """
         with self._lock:
             if conversation_id in self._pool:
@@ -182,9 +212,6 @@ class AgentPool:
                 entry.last_accessed = datetime.now(timezone.utc)
                 logger.debug("AgentPool: reusing agent for %s", conversation_id)
                 return entry.agent
-
-            # Build system prompt from skills
-            system_prompt = "\n\n".join(skills_config.skill_contents) or "You are a helpful assistant."
 
             # Substitute user token into MCP config
             mcp_config = substitute_token(skills_config.mcp_config, access_token)
@@ -209,7 +236,19 @@ class AgentPool:
             elif not volume_base:
                 logger.warning("AGENT_SESSIONS_VOLUME_PATH not set — skipping file restore")
 
-            # Step 2: Hydrate history from DB
+            # Step 2: Resolve enabled skills for this user
+            if db is not None:
+                try:
+                    from deps import get_user_skill_prefs
+                    enabled_skills = get_user_skill_prefs(user_id, db, skills_config)
+                except Exception as exc:
+                    logger.error("AgentPool: skill prefs lookup failed for %s: %s", conversation_id, exc)
+                    raise RuntimeError(f"Skill prefs lookup failed: {exc}") from exc
+            else:
+                # No DB available — default all skills to enabled
+                enabled_skills = set(skills_config.skills.keys())
+
+            # Step 3: Hydrate history from DB
             history: list[dict] = []
             if db is not None:
                 try:
@@ -225,21 +264,22 @@ class AgentPool:
                     logger.error("AgentPool: history hydration failed for %s: %s", conversation_id, exc)
                     raise RuntimeError(f"History hydration failed: {exc}") from exc
 
-            # Step 3: Build the agent
+            # Step 4: Build the agent (copies skills, initialises SDK)
             try:
                 agent = build_agent(
-                    system_prompt=system_prompt,
-                    mcp_config=mcp_config,
                     session_dir=session_dir,
+                    mcp_config=mcp_config,
+                    enabled_skill_names=enabled_skills,
+                    skills_config=skills_config,
                 )
             except Exception as exc:
                 logger.error("AgentPool: failed to build agent for %s: %s", conversation_id, exc)
                 raise RuntimeError(f"Agent initialization failed: {exc}") from exc
 
-            # Step 4: Inject history into agent
+            # Step 5: Inject history into agent
             agent._history = history
 
-            # Step 5: Store in pool
+            # Step 6: Store in pool
             entry.agent = agent
             self._pool[conversation_id] = entry
             logger.info("AgentPool: spawned new agent for conversation %s (user=%s)", conversation_id, user_id)

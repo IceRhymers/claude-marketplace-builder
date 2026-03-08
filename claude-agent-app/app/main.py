@@ -23,6 +23,7 @@ from routers.conversations import router as conversations_router
 from routers.me import router as me_router
 from routers.stream import router as stream_router
 from routers.marketplace import router as marketplace_router
+from routers.preferences import router as preferences_router
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "Loaded skills config version=%s skills=%d",
                 loaded.version,
-                len(loaded.skill_contents),
+                len(loaded.skills),
             )
         except Exception as exc:
             logger.warning("Failed to load skills config: %s", exc)
@@ -165,6 +166,7 @@ app.include_router(me_router)
 app.include_router(conversations_router)
 app.include_router(stream_router)
 app.include_router(marketplace_router)
+app.include_router(preferences_router)
 
 # Serve React frontend static build if available
 frontend_dist = Path(__file__).resolve().parent / "frontend" / "dist"

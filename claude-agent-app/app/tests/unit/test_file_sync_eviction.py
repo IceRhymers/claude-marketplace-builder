@@ -11,6 +11,11 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
 
+def _make_skills_config():
+    from core.skills import SkillsConfig
+    return SkillsConfig(version="v1.0.0", skills={}, mcp_config={"mcpServers": {}})
+
+
 class TestEvictSyncsToVolume:
     async def test_evict_syncs_files_to_volume_when_purge_false(
         self, tmp_path, monkeypatch, mock_workspace_client
@@ -28,7 +33,7 @@ class TestEvictSyncsToVolume:
             pool.set_workspace_client(mock_workspace_client)
 
             # Pre-populate pool
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-sync", "alice@example.com", "tok", skills_config, db=None
             )
@@ -58,7 +63,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-path-check", "alice@example.com", "tok", skills_config, db=None
             )
@@ -89,7 +94,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-purge", "alice@example.com", "tok", skills_config, db=None
             )
@@ -120,7 +125,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-empty-dir", "alice@example.com", "tok", skills_config, db=None
             )
@@ -147,7 +152,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-fail", "alice@example.com", "tok", skills_config, db=None
             )
@@ -179,7 +184,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-always-delete", "alice@example.com", "tok", skills_config, db=None
             )
@@ -207,7 +212,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-no-volume", "alice@example.com", "tok", skills_config, db=None
             )
@@ -236,7 +241,7 @@ class TestEvictSyncsToVolume:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-stale", "alice@example.com", "tok", skills_config, db=None
             )

@@ -15,6 +15,11 @@ TEST_CONV_ID = "conv-id"
 VOLUME_BASE = "/Volumes/catalog/schema/agent-sessions"
 
 
+def _make_skills_config():
+    from core.skills import SkillsConfig
+    return SkillsConfig(version="v1.0.0", skills={}, mcp_config={"mcpServers": {}})
+
+
 def _make_file_info(path: str, is_directory: bool = False) -> MagicMock:
     info = MagicMock()
     info.path = path
@@ -54,7 +59,7 @@ class TestFileRestoreOnCacheMiss:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             agent = await pool.get_or_create(
                 TEST_CONV_ID, TEST_USER_ID, "tok", skills_config, db=db_session
             )
@@ -84,7 +89,7 @@ class TestFileRestoreOnCacheMiss:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "conv-empty-vol", TEST_USER_ID, "tok", skills_config, db=db_session
             )
@@ -112,7 +117,7 @@ class TestFileRestoreOnCacheMiss:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
 
             # Must not raise
             agent = await pool.get_or_create(
@@ -137,7 +142,7 @@ class TestFileRestoreOnCacheMiss:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             agent = await pool.get_or_create(
                 "conv-no-vol-path", TEST_USER_ID, "tok", skills_config, db=db_session
             )
@@ -187,7 +192,7 @@ class TestFileRestoreOnCacheMiss:
 
             populated_messages_db.query = _tracked_query
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
             await pool.get_or_create(
                 "test-conv-001", TEST_USER_ID, "tok", skills_config, db=populated_messages_db
             )
@@ -218,7 +223,7 @@ class TestFileRestoreOnCacheMiss:
             pool = AgentPool()
             pool.set_workspace_client(mock_workspace_client)
 
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = _make_skills_config()
 
             # First call — cache miss, restore may happen
             await pool.get_or_create(

@@ -140,6 +140,42 @@ python scripts/gather-diagnostics.py --env production
 
 Make scripts executable: `chmod +x scripts/gather-diagnostics.py`
 
+## $CLAUDE_SKILL_DIR — Absolute Path Resolution in Scripts
+
+When skills are mounted into the agent session sandbox, the SDK's Bash tool runs with the **session sandbox root** as its working directory — not the skill's own directory. This means relative paths like `python scripts/gather-diagnostics.py` will fail at runtime because `scripts/` does not exist relative to the sandbox root.
+
+Use `$CLAUDE_SKILL_DIR` to construct absolute paths to your skill's own files:
+
+**Correct — uses `$CLAUDE_SKILL_DIR` for absolute path:**
+```bash
+python "$CLAUDE_SKILL_DIR/scripts/gather-diagnostics.py" --env production
+```
+
+**Incorrect — relative path fails because cwd is sandbox root, not skill dir:**
+```bash
+python scripts/gather-diagnostics.py --env production
+```
+
+`$CLAUDE_SKILL_DIR` is set automatically to the skill's mounted directory (e.g., `/tmp/session-abc/.claude/skills/my-skill`) when the agent session starts. Always use it when referencing files inside your skill's `scripts/` or `references/` subdirectories.
+
+### Example Script Invocations
+
+```markdown
+### Step 1: Run diagnostics
+
+```bash
+python "$CLAUDE_SKILL_DIR/scripts/gather-diagnostics.py" --env production
+```
+
+### Step 2: Parse results
+
+```bash
+"$CLAUDE_SKILL_DIR/scripts/parse-results.sh" output.json
+```
+```
+
+Note: `$CLAUDE_SKILL_DIR` is only relevant for skills with a `scripts/` subdirectory. Knowledge-only skills that contain only `SKILL.md` and `references/` do not need it.
+
 ## String Substitutions
 
 Use these variables in skill content:

@@ -18,8 +18,8 @@ def list_skills(
 ):
     """Return the list of loaded skill definitions."""
     return [
-        {"content": content, "index": i}
-        for i, content in enumerate(skills_config.skill_contents)
+        {"name": name, "has_scripts": sd.has_scripts, "has_references": sd.has_references}
+        for name, sd in skills_config.skills.items()
     ]
 
 

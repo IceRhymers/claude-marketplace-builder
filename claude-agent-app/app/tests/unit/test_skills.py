@@ -1,6 +1,6 @@
 """Tests for core/skills.py — SkillsConfig loader and hot-reload.
 
-Written BEFORE implementation (RED phase).
+Updated for new SkillDefinition-based API.
 """
 
 from __future__ import annotations
@@ -19,27 +19,58 @@ class TestSkillsConfig:
         import dataclasses
         assert dataclasses.is_dataclass(SkillsConfig)
 
-    def test_skills_config_fields(self):
-        from core.skills import SkillsConfig
-        config = SkillsConfig(version="v1.0.0", skill_contents=[], mcp_config={})
+    def test_skills_config_has_skills_dict(self):
+        from core.skills import SkillsConfig, SkillDefinition
+        config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
         assert config.version == "v1.0.0"
-        assert config.skill_contents == []
+        assert config.skills == {}
         assert config.mcp_config == {}
+
+    def test_skills_config_has_no_skill_contents_attribute(self):
+        from core.skills import SkillsConfig
+        config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
+        assert not hasattr(config, "skill_contents"), (
+            "SkillsConfig must not have skill_contents attribute"
+        )
+
+    def test_skill_definition_is_dataclass(self):
+        from core.skills import SkillDefinition
+        import dataclasses
+        assert dataclasses.is_dataclass(SkillDefinition)
+
+    def test_skill_definition_fields(self, tmp_path):
+        from core.skills import SkillDefinition
+        sd = SkillDefinition(
+            name="test-skill",
+            path=tmp_path / "skills" / "test-skill",
+            has_scripts=True,
+            has_references=False,
+        )
+        assert sd.name == "test-skill"
+        assert sd.path == tmp_path / "skills" / "test-skill"
+        assert sd.has_scripts is True
+        assert sd.has_references is False
 
 
 class TestLoadConfigFromVolume:
-    def test_loads_valid_config(self, tmp_path):
-        """load_config_from_volume with valid latest.json + SKILL.md + .mcp.json."""
+    def test_loads_valid_config_with_manifest(self, tmp_path):
+        """load_config_from_volume with valid latest.json + manifest.json + skill dirs."""
         from core.skills import load_config_from_volume
 
-        # Create version artifact dir
         version = "v1.0.0"
         artifact_dir = tmp_path / "artifacts" / version
         skill_dir = artifact_dir / "skills" / "getting-started"
         skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Getting Started\nThis is a skill.")
 
-        skill_content = "# Getting Started\nThis is a skill."
-        (skill_dir / "SKILL.md").write_text(skill_content)
+        manifest = {
+            "version": version,
+            "skills": [
+                {"name": "getting-started", "has_scripts": False, "has_references": False}
+            ],
+            "mcp_servers": []
+        }
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
 
         mcp_config = {"mcpServers": {"slack": {"command": "npx", "args": []}}}
         (artifact_dir / ".mcp.json").write_text(json.dumps(mcp_config))
@@ -50,9 +81,129 @@ class TestLoadConfigFromVolume:
         config = load_config_from_volume(str(tmp_path))
 
         assert config.version == version
-        assert len(config.skill_contents) == 1
-        assert "Getting Started" in config.skill_contents[0]
+        assert "getting-started" in config.skills
+        sd = config.skills["getting-started"]
+        assert sd.name == "getting-started"
+        assert sd.path == artifact_dir / "skills" / "getting-started"
+        assert sd.has_scripts is False
+        assert sd.has_references is False
         assert config.mcp_config == mcp_config
+
+    def test_skill_definition_path_correct(self, tmp_path):
+        """SkillDefinition.path equals artifact_dir / 'skills' / skill_name."""
+        from core.skills import load_config_from_volume
+
+        version = "v1.2.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        skill_dir = artifact_dir / "skills" / "databricks-lineage"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Lineage")
+
+        manifest = {
+            "version": version,
+            "skills": [{"name": "databricks-lineage", "has_scripts": True, "has_references": False}],
+            "mcp_servers": []
+        }
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        config = load_config_from_volume(str(tmp_path))
+        expected_path = artifact_dir / "skills" / "databricks-lineage"
+        assert config.skills["databricks-lineage"].path == expected_path
+
+    def test_skill_definition_has_scripts_from_manifest(self, tmp_path):
+        """SkillDefinition.has_scripts is True when manifest says has_scripts: true."""
+        from core.skills import load_config_from_volume
+
+        version = "v1.0.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        skill_dir = artifact_dir / "skills" / "scripted-skill"
+        scripts_dir = skill_dir / "scripts"
+        scripts_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Scripted Skill")
+        (scripts_dir / "run.py").write_text("print('hello')")
+
+        manifest = {
+            "version": version,
+            "skills": [{"name": "scripted-skill", "has_scripts": True, "has_references": False}],
+            "mcp_servers": []
+        }
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        config = load_config_from_volume(str(tmp_path))
+        assert config.skills["scripted-skill"].has_scripts is True
+        assert config.skills["scripted-skill"].has_references is False
+
+    def test_missing_skill_dir_skipped_with_warning(self, tmp_path, caplog):
+        """Skill listed in manifest but dir missing → skipped, WARNING logged, no exception."""
+        import logging
+        from core.skills import load_config_from_volume
+
+        version = "v1.0.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        artifact_dir.mkdir(parents=True)
+        # Skill listed in manifest but NOT created on disk
+        manifest = {
+            "version": version,
+            "skills": [{"name": "missing-skill", "has_scripts": False, "has_references": False}],
+            "mcp_servers": []
+        }
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        with caplog.at_level(logging.WARNING, logger="core.skills"):
+            config = load_config_from_volume(str(tmp_path))
+
+        assert "missing-skill" not in config.skills
+        assert any("missing-skill" in rec.message or "Skill directory not found" in rec.message
+                   for rec in caplog.records)
+
+    def test_missing_manifest_returns_empty_skills(self, tmp_path, caplog):
+        """manifest.json missing → empty skills dict, no exception."""
+        import logging
+        from core.skills import load_config_from_volume, SkillsConfig
+
+        version = "v1.0.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        artifact_dir.mkdir(parents=True)
+        # No manifest.json, but latest.json points here
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        with caplog.at_level(logging.WARNING, logger="core.skills"):
+            config = load_config_from_volume(str(tmp_path))
+
+        assert isinstance(config, SkillsConfig)
+        assert config.skills == {}
+        assert any("manifest" in rec.message.lower() for rec in caplog.records)
+
+    def test_malformed_manifest_returns_empty_config(self, tmp_path, caplog):
+        """Malformed manifest.json → empty SkillsConfig, ERROR logged, no exception."""
+        import logging
+        from core.skills import load_config_from_volume, SkillsConfig
+
+        version = "v1.0.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "manifest.json").write_text("NOT VALID JSON {{{")
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        with caplog.at_level(logging.ERROR, logger="core.skills"):
+            config = load_config_from_volume(str(tmp_path))
+
+        assert isinstance(config, SkillsConfig)
+        assert config.skills == {}
+        assert any(rec.levelno >= logging.ERROR for rec in caplog.records)
 
     def test_missing_latest_json_returns_empty_config(self, tmp_path):
         """Missing latest.json returns empty SkillsConfig without exception."""
@@ -61,10 +212,10 @@ class TestLoadConfigFromVolume:
         config = load_config_from_volume(str(tmp_path))
 
         assert isinstance(config, SkillsConfig)
-        assert config.skill_contents == []
+        assert config.skills == {}
         assert config.mcp_config == {}
 
-    def test_malformed_json_returns_empty_config(self, tmp_path):
+    def test_malformed_latest_json_returns_empty_config(self, tmp_path):
         """Invalid JSON in latest.json returns empty SkillsConfig."""
         from core.skills import load_config_from_volume, SkillsConfig
 
@@ -73,22 +224,34 @@ class TestLoadConfigFromVolume:
         config = load_config_from_volume(str(tmp_path))
 
         assert isinstance(config, SkillsConfig)
-        assert config.skill_contents == []
+        assert config.skills == {}
 
-    def test_no_skill_md_files_returns_empty_skills(self, tmp_path):
-        """Artifact with no SKILL.md files returns empty skill_contents."""
+    def test_skills_config_is_dict_not_list(self, tmp_path):
+        """SkillsConfig.skills is a dict keyed by skill name."""
         from core.skills import load_config_from_volume
 
         version = "v1.0.0"
         artifact_dir = tmp_path / "artifacts" / version
-        artifact_dir.mkdir(parents=True)
+        for name in ["skill-a", "skill-b"]:
+            skill_dir = artifact_dir / "skills" / name
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(f"# {name}")
+        manifest = {
+            "version": version,
+            "skills": [
+                {"name": "skill-a", "has_scripts": False, "has_references": False},
+                {"name": "skill-b", "has_scripts": False, "has_references": False},
+            ],
+            "mcp_servers": []
+        }
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
         (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
-
         latest = {"version": version, "path": f"artifacts/{version}"}
         (tmp_path / "latest.json").write_text(json.dumps(latest))
 
         config = load_config_from_volume(str(tmp_path))
-        assert config.skill_contents == []
+        assert isinstance(config.skills, dict)
+        assert set(config.skills.keys()) == {"skill-a", "skill-b"}
 
 
 class TestSubstituteToken:
@@ -147,15 +310,15 @@ class TestReloadIfChanged:
     def test_detects_new_version_and_reloads(self, tmp_path):
         """reload_if_changed updates current_config when version changes."""
         import core.skills as skills_module
-        from core.skills import load_config_from_volume, SkillsConfig
+        from core.skills import SkillsConfig
 
-        # Set up initial config
-        skills_module.current_config = SkillsConfig(version="v1.0.0", skill_contents=[], mcp_config={})
+        skills_module.current_config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
 
-        # Create new artifact
         version = "v2.0.0"
         artifact_dir = tmp_path / "artifacts" / version
         artifact_dir.mkdir(parents=True)
+        manifest = {"version": version, "skills": [], "mcp_servers": []}
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
         (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
         latest = {"version": version, "path": f"artifacts/{version}"}
         (tmp_path / "latest.json").write_text(json.dumps(latest))
@@ -168,17 +331,22 @@ class TestReloadIfChanged:
     def test_no_op_on_same_version(self, tmp_path):
         """reload_if_changed skips reload when version matches current."""
         import core.skills as skills_module
-        from core.skills import SkillsConfig
+        from core.skills import SkillsConfig, SkillDefinition
 
-        # Set up existing config at v1.0.0
-        original_skills = ["# Existing skill"]
+        original_skills = {
+            "test-skill": SkillDefinition(
+                name="test-skill",
+                path=tmp_path / "skills" / "test-skill",
+                has_scripts=False,
+                has_references=False,
+            )
+        }
         skills_module.current_config = SkillsConfig(
             version="v1.0.0",
-            skill_contents=original_skills,
+            skills=original_skills,
             mcp_config={},
         )
 
-        # latest.json still points to v1.0.0
         latest = {"version": "v1.0.0", "path": "artifacts/v1.0.0"}
         (tmp_path / "latest.json").write_text(json.dumps(latest))
 
@@ -186,28 +354,134 @@ class TestReloadIfChanged:
         reload_if_changed(str(tmp_path))
 
         # Should not reload — skills remain the same object
-        assert skills_module.current_config.skill_contents is original_skills
+        assert skills_module.current_config.skills is original_skills
 
     def test_reload_failure_retains_previous_config(self, tmp_path):
         """reload_if_changed on IOError keeps previous config."""
         import core.skills as skills_module
         from core.skills import SkillsConfig
 
-        original = SkillsConfig(version="v1.0.0", skill_contents=["old"], mcp_config={})
+        original = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
         skills_module.current_config = original
 
-        # latest.json points to nonexistent path
         latest = {"version": "v2.0.0", "path": "artifacts/v2.0.0"}
         (tmp_path / "latest.json").write_text(json.dumps(latest))
-        # No actual artifact dir — load will fail gracefully
+        # No actual artifact dir — load will return empty config gracefully
 
         from core.skills import reload_if_changed
-        # Should not raise — retains previous config
         reload_if_changed(str(tmp_path))
 
-        # Since v2.0.0 artifact path doesn't exist, fallback behavior:
-        # Either retains old or returns empty — but must not raise
         assert skills_module.current_config is not None
+
+    def test_reload_logs_skill_count_from_dict(self, tmp_path, caplog):
+        """reload_if_changed logs skills=<count> using dict length."""
+        import logging
+        import core.skills as skills_module
+        from core.skills import SkillsConfig, reload_if_changed
+
+        skills_module.current_config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
+
+        version = "v2.0.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        for name in ["skill-x", "skill-y", "skill-z"]:
+            skill_dir = artifact_dir / "skills" / name
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(f"# {name}")
+        manifest = {
+            "version": version,
+            "skills": [
+                {"name": "skill-x", "has_scripts": False, "has_references": False},
+                {"name": "skill-y", "has_scripts": False, "has_references": False},
+                {"name": "skill-z", "has_scripts": False, "has_references": False},
+            ],
+            "mcp_servers": []
+        }
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        with caplog.at_level(logging.INFO, logger="core.skills"):
+            reload_if_changed(str(tmp_path))
+
+        assert any("skills=3" in rec.message for rec in caplog.records)
+
+
+class TestListSkillsEndpoint:
+    def test_list_skills_returns_name_and_metadata(self, tmp_path):
+        """GET /api/skills returns [{name, has_scripts, has_references}] from skills dict."""
+        from pathlib import Path
+        from fastapi.testclient import TestClient
+        from unittest.mock import MagicMock, patch
+        from core.skills import SkillsConfig, SkillDefinition
+
+        skill_a_path = tmp_path / "skills" / "skill-a"
+        skill_a_path.mkdir(parents=True)
+
+        mock_config = SkillsConfig(
+            version="v1.0.0",
+            skills={
+                "skill-a": SkillDefinition(
+                    name="skill-a",
+                    path=skill_a_path,
+                    has_scripts=True,
+                    has_references=False,
+                )
+            },
+            mcp_config={},
+        )
+
+        # Patch databricks.sdk import so auth module can be imported
+        with patch.dict("sys.modules", {"databricks": MagicMock(), "databricks.sdk": MagicMock()}):
+            from core.auth import CurrentUser, get_current_user
+            mock_user = CurrentUser(user_id="alice@example.com", access_token="tok")
+
+            from fastapi import FastAPI
+            from routers.marketplace import router
+            from deps import get_skills_config
+
+            test_app = FastAPI()
+            test_app.include_router(router)
+            test_app.dependency_overrides[get_skills_config] = lambda: mock_config
+            test_app.dependency_overrides[get_current_user] = lambda: mock_user
+
+            client = TestClient(test_app)
+            response = client.get("/api/skills")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "skill-a"
+        assert data[0]["has_scripts"] is True
+        assert data[0]["has_references"] is False
+        assert "content" not in data[0]
+
+    def test_list_skills_empty_config_returns_empty_list(self, tmp_path):
+        """GET /api/skills with empty skills config returns []."""
+        from fastapi.testclient import TestClient
+        from unittest.mock import MagicMock, patch
+        from core.skills import SkillsConfig
+
+        mock_config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
+
+        with patch.dict("sys.modules", {"databricks": MagicMock(), "databricks.sdk": MagicMock()}):
+            from core.auth import CurrentUser, get_current_user
+            mock_user = CurrentUser(user_id="alice@example.com", access_token="tok")
+
+            from fastapi import FastAPI
+            from routers.marketplace import router
+            from deps import get_skills_config
+
+            test_app = FastAPI()
+            test_app.include_router(router)
+            test_app.dependency_overrides[get_skills_config] = lambda: mock_config
+            test_app.dependency_overrides[get_current_user] = lambda: mock_user
+
+            client = TestClient(test_app)
+            response = client.get("/api/skills")
+
+        assert response.status_code == 200
+        assert response.json() == []
 
 
 class TestGetCurrentConfig:
@@ -216,7 +490,7 @@ class TestGetCurrentConfig:
         import core.skills as skills_module
         from core.skills import get_current_config, SkillsConfig
 
-        skills_module.current_config = SkillsConfig(version="v9.9.9", skill_contents=[], mcp_config={})
+        skills_module.current_config = SkillsConfig(version="v9.9.9", skills={}, mcp_config={})
         result = get_current_config()
         assert isinstance(result, SkillsConfig)
         assert result.version == "v9.9.9"
@@ -226,8 +500,8 @@ class TestGetCurrentConfig:
         import core.skills as skills_module
         from core.skills import get_current_config, SkillsConfig
 
-        skills_module.current_config = SkillsConfig(version="v1.0.0", skill_contents=[], mcp_config={})
-        new = SkillsConfig(version="v2.0.0", skill_contents=["updated"], mcp_config={})
+        skills_module.current_config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
+        new = SkillsConfig(version="v2.0.0", skills={}, mcp_config={})
         skills_module.current_config = new
 
         result = get_current_config()
@@ -236,18 +510,17 @@ class TestGetCurrentConfig:
 
 class TestSkillsConfigThreading:
     def test_reload_if_changed_from_thread_concurrent_with_get_current_config(self, tmp_path):
-        """reload_if_changed from a thread concurrent with get_current_config must not raise
-        and must always return a valid SkillsConfig."""
+        """reload_if_changed from a thread concurrent with get_current_config must not raise."""
         import core.skills as skills_module
         from core.skills import get_current_config, reload_if_changed, SkillsConfig
 
-        # Set up initial config
-        skills_module.current_config = SkillsConfig(version="v1.0.0", skill_contents=[], mcp_config={})
+        skills_module.current_config = SkillsConfig(version="v1.0.0", skills={}, mcp_config={})
 
-        # Create valid artifact for v2.0.0
         version = "v2.0.0"
         artifact_dir = tmp_path / "artifacts" / version
         artifact_dir.mkdir(parents=True)
+        manifest = {"version": version, "skills": [], "mcp_servers": []}
+        (artifact_dir / "manifest.json").write_text(json.dumps(manifest))
         (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
         latest = {"version": version, "path": f"artifacts/{version}"}
         (tmp_path / "latest.json").write_text(json.dumps(latest))
@@ -256,14 +529,12 @@ class TestSkillsConfigThreading:
         configs_seen = []
 
         def writer():
-            """Simulate APScheduler thread calling reload_if_changed."""
             try:
                 reload_if_changed(str(tmp_path))
             except Exception as exc:
                 errors.append(("writer", exc))
 
         def reader():
-            """Simulate async request handler calling get_current_config."""
             for _ in range(50):
                 try:
                     cfg = get_current_config()
@@ -272,7 +543,6 @@ class TestSkillsConfigThreading:
                 except Exception as exc:
                     errors.append(("reader", exc))
 
-        # Start both threads concurrently
         t_reader = threading.Thread(target=reader)
         t_writer = threading.Thread(target=writer)
 
@@ -283,5 +553,4 @@ class TestSkillsConfigThreading:
         t_writer.join(timeout=5)
 
         assert not errors, f"Concurrent access raised exceptions: {errors}"
-        assert all(isinstance(c, SkillsConfig) for c in configs_seen), \
-            "All configs returned must be valid SkillsConfig instances"
+        assert all(isinstance(c, SkillsConfig) for c in configs_seen)

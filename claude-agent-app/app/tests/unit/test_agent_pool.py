@@ -1,6 +1,6 @@
 """Tests for core/agent_pool.py — AgentPool with TTL eviction.
 
-Written BEFORE implementation (RED phase).
+Updated for new SkillsConfig API and skill mounting.
 """
 
 from __future__ import annotations
@@ -13,9 +13,35 @@ from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 
 
+def make_skills_config(skill_names=None):
+    """Create a SkillsConfig with the new skills dict API."""
+    from core.skills import SkillsConfig, SkillDefinition
+    skills = {}
+    if skill_names:
+        for name in skill_names:
+            skills[name] = SkillDefinition(
+                name=name,
+                path=Path(f"/fake/skills/{name}"),
+                has_scripts=False,
+                has_references=False,
+            )
+    return SkillsConfig(version="v1.0.0", skills=skills, mcp_config={"mcpServers": {}})
+
+
+def make_mock_db():
+    """Create a mock DB that returns no UserSkillPref rows."""
+    db = MagicMock()
+    query_mock = MagicMock()
+    filter_mock = MagicMock()
+    filter_mock.all.return_value = []
+    query_mock.filter.return_value = filter_mock
+    db.query.return_value = query_mock
+    return db
+
+
 class TestAgentPoolGetOrCreate:
     async def test_first_message_spawns_agent(self):
-        """Empty pool: get_or_create constructs exactly one ClaudeAgent."""
+        """Empty pool: get_or_create constructs exactly one agent."""
         with patch("core.agent_pool.build_agent") as mock_build:
             from core.agent_pool import AgentPool
 
@@ -27,7 +53,8 @@ class TestAgentPoolGetOrCreate:
                 conversation_id="conv-1",
                 user_id="alice@example.com",
                 access_token="token-alice",
-                skills_config=MagicMock(skill_contents=[], mcp_config={"mcpServers": {}}),
+                skills_config=make_skills_config(),
+                db=make_mock_db(),
             )
 
             assert agent is mock_agent
@@ -43,10 +70,11 @@ class TestAgentPoolGetOrCreate:
             mock_build.return_value = mock_agent
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
+            db = make_mock_db()
 
-            agent1 = await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config)
-            agent2 = await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config)
+            agent1 = await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config, db)
+            agent2 = await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config, db)
 
             assert agent1 is agent2
             assert mock_build.call_count == 1
@@ -59,10 +87,10 @@ class TestAgentPoolGetOrCreate:
             mock_build.side_effect = [MagicMock(), MagicMock()]
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
-            agent_alice = await pool.get_or_create("conv-alice", "alice@example.com", "tok-a", skills_config)
-            agent_bob = await pool.get_or_create("conv-bob", "bob@example.com", "tok-b", skills_config)
+            agent_alice = await pool.get_or_create("conv-alice", "alice@example.com", "tok-a", skills_config, make_mock_db())
+            agent_bob = await pool.get_or_create("conv-bob", "bob@example.com", "tok-b", skills_config, make_mock_db())
 
             assert agent_alice is not agent_bob
             assert mock_build.call_count == 2
@@ -78,10 +106,9 @@ class TestAgentPoolEviction:
             mock_build.return_value = mock_agent
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
-            await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config)
+            skills_config = make_skills_config()
+            await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config, make_mock_db())
 
-            # Evict with 0 TTL — everything is stale
             pool.evict_stale(ttl_minutes=0)
 
             assert len(pool._pool) == 0
@@ -95,10 +122,9 @@ class TestAgentPoolEviction:
             mock_build.return_value = mock_agent
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
-            await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config)
+            skills_config = make_skills_config()
+            await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config, make_mock_db())
 
-            # Evict with large TTL — nothing should be evicted
             pool.evict_stale(ttl_minutes=999)
 
             assert "conv-1" in pool._pool
@@ -115,10 +141,10 @@ class TestAgentPoolShutdown:
             mock_build.side_effect = [mock_agent1, mock_agent2]
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
-            await pool.get_or_create("conv-1", "alice@example.com", "tok-a", skills_config)
-            await pool.get_or_create("conv-2", "bob@example.com", "tok-b", skills_config)
+            await pool.get_or_create("conv-1", "alice@example.com", "tok-a", skills_config, make_mock_db())
+            await pool.get_or_create("conv-2", "bob@example.com", "tok-b", skills_config, make_mock_db())
 
             await pool.shutdown()
 
@@ -134,10 +160,10 @@ class TestAgentPoolEvict:
             mock_build.side_effect = [MagicMock(), MagicMock()]
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
-            await pool.get_or_create("conv-1", "alice@example.com", "tok-a", skills_config)
-            await pool.get_or_create("conv-2", "alice@example.com", "tok-a", skills_config)
+            await pool.get_or_create("conv-1", "alice@example.com", "tok-a", skills_config, make_mock_db())
+            await pool.get_or_create("conv-2", "alice@example.com", "tok-a", skills_config, make_mock_db())
 
             pool.evict("conv-1")
 
@@ -153,25 +179,19 @@ class TestAgentPoolThreadingLock:
         from core.agent_pool import AgentPool
 
         pool = AgentPool()
-        # threading.Lock() returns a _thread.lock instance; verify it is NOT an asyncio lock
-        # and that it has the acquire/release interface of a threading primitive.
         assert not isinstance(pool._lock, asyncio.Lock), (
             "_lock must not be an asyncio.Lock"
         )
-        # The lock returned by threading.Lock() is a _thread.lock (C type), which is the
-        # same type as threading.Lock(). We verify by checking the type name and that it
-        # is acquired synchronously (non-coroutine).
         lock_type_name = type(pool._lock).__name__
         assert lock_type_name in ("lock", "_thread.lock"), (
             f"Expected a threading lock type, got {lock_type_name}"
         )
-        # Acquiring synchronously must work (would raise if it were asyncio.Lock)
         acquired = pool._lock.acquire(blocking=False)
         assert acquired, "_lock must be acquirable from a synchronous context"
         pool._lock.release()
 
     async def test_evict_stale_from_thread_concurrent_with_get_or_create(self):
-        """evict_stale called from a background thread must not raise and pool must be consistent."""
+        """evict_stale called from a background thread must not raise."""
         import threading as _threading
         from core.agent_pool import AgentPool
 
@@ -179,11 +199,10 @@ class TestAgentPoolThreadingLock:
             mock_build.return_value = MagicMock()
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
-            # Pre-populate pool
-            await pool.get_or_create("conv-thread-1", "alice@example.com", "tok", skills_config)
-            await pool.get_or_create("conv-thread-2", "bob@example.com", "tok", skills_config)
+            await pool.get_or_create("conv-thread-1", "alice@example.com", "tok", skills_config, make_mock_db())
+            await pool.get_or_create("conv-thread-2", "bob@example.com", "tok", skills_config, make_mock_db())
 
             errors = []
 
@@ -198,7 +217,6 @@ class TestAgentPoolThreadingLock:
             t.join(timeout=5)
 
             assert not errors, f"evict_stale raised from thread: {errors}"
-            # Pool should be empty (TTL=0 evicts everything)
             assert len(pool._pool) == 0
 
 
@@ -211,10 +229,10 @@ class TestAgentPoolSessionIsolation:
             mock_build.return_value = MagicMock()
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
-            await pool.get_or_create("conv-iso-1", "alice@example.com", "tok-a", skills_config)
-            await pool.get_or_create("conv-iso-2", "bob@example.com", "tok-b", skills_config)
+            await pool.get_or_create("conv-iso-1", "alice@example.com", "tok-a", skills_config, make_mock_db())
+            await pool.get_or_create("conv-iso-2", "bob@example.com", "tok-b", skills_config, make_mock_db())
 
             dir1 = pool._pool["conv-iso-1"].session_dir
             dir2 = pool._pool["conv-iso-2"].session_dir
@@ -229,10 +247,10 @@ class TestAgentPoolSessionIsolation:
             mock_build.return_value = MagicMock()
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
             conv_id = "conv-base-check"
-            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config)
+            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config, make_mock_db())
 
             entry = pool._pool[conv_id]
             assert entry.session_dir == SESSION_BASE / conv_id
@@ -245,15 +263,14 @@ class TestAgentPoolSessionIsolation:
             mock_build.return_value = MagicMock()
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
             conv_id = "conv-fs-check"
-            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config)
+            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config, make_mock_db())
 
             entry = pool._pool[conv_id]
             assert entry.session_dir.exists(), "Session dir must be created on the filesystem"
 
-            # Cleanup
             pool.evict(conv_id)
 
     async def test_evict_removes_session_dir_from_filesystem(self):
@@ -264,10 +281,10 @@ class TestAgentPoolSessionIsolation:
             mock_build.return_value = MagicMock()
 
             pool = AgentPool()
-            skills_config = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+            skills_config = make_skills_config()
 
             conv_id = "conv-evict-cleanup"
-            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config)
+            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config, make_mock_db())
 
             entry = pool._pool[conv_id]
             session_dir = entry.session_dir
@@ -277,8 +294,8 @@ class TestAgentPoolSessionIsolation:
 
             assert not session_dir.exists(), "evict() must remove the session directory"
 
-    async def test_system_prompt_contains_session_dir(self):
-        """build_agent is called with a system prompt that references the session_dir."""
+    async def test_build_agent_called_with_session_dir(self):
+        """build_agent is called with the correct session_dir."""
         from core.agent_pool import AgentPool, SESSION_BASE
 
         with patch("core.agent_pool.build_agent") as mock_build:
@@ -286,17 +303,59 @@ class TestAgentPoolSessionIsolation:
 
             pool = AgentPool()
             conv_id = "conv-prompt-check"
-            skills_config = MagicMock(
-                skill_contents=["# My Skill"],
-                mcp_config={"mcpServers": {}},
-            )
+            skills_config = make_skills_config()
 
-            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config)
+            await pool.get_or_create(conv_id, "alice@example.com", "tok", skills_config, make_mock_db())
 
-            # build_agent should have been called with session_dir
             call_kwargs = mock_build.call_args
-            session_dir_arg = call_kwargs.kwargs.get("session_dir") or call_kwargs.args[2]
+            session_dir_arg = call_kwargs.kwargs.get("session_dir") or call_kwargs.args[0]
             expected_dir = SESSION_BASE / conv_id
             assert session_dir_arg == expected_dir, (
                 f"build_agent must receive session_dir={expected_dir}, got {session_dir_arg}"
             )
+
+    async def test_build_agent_called_with_enabled_skill_names(self):
+        """build_agent is called with enabled_skill_names (not system_prompt)."""
+        from core.agent_pool import AgentPool
+
+        with patch("core.agent_pool.build_agent") as mock_build:
+            mock_build.return_value = MagicMock()
+
+            pool = AgentPool()
+            skills_config = make_skills_config()
+
+            await pool.get_or_create("conv-1", "alice@example.com", "tok", skills_config, make_mock_db())
+
+            call_kwargs = mock_build.call_args
+            assert "enabled_skill_names" in call_kwargs.kwargs
+            assert "system_prompt" not in call_kwargs.kwargs
+
+    async def test_skills_mount_created_in_session_dir(self, tmp_path):
+        """After spawning, session_dir/.claude/skills/ exists."""
+        from core.agent_pool import AgentPool, SESSION_BASE
+
+        with patch("core.agent_pool.SESSION_BASE", tmp_path):
+            pool = AgentPool()
+
+            from core.skills import SkillsConfig, SkillDefinition
+            skill_dir = tmp_path / "artifact" / "skills" / "skill-a"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("# skill-a")
+
+            sc = SkillsConfig(
+                version="v1.0.0",
+                skills={
+                    "skill-a": SkillDefinition("skill-a", skill_dir, False, False)
+                },
+                mcp_config={},
+            )
+
+            conv_id = "conv-skill-mount"
+            await pool.get_or_create(conv_id, "alice@example.com", "tok", sc, make_mock_db())
+
+            entry = pool._pool[conv_id]
+            skills_mount = entry.session_dir / ".claude" / "skills"
+            assert skills_mount.exists(), ".claude/skills/ must be created"
+            assert (skills_mount / "skill-a" / "SKILL.md").exists()
+
+            pool.evict(conv_id)

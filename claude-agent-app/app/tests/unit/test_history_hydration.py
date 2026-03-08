@@ -12,7 +12,14 @@ from unittest.mock import MagicMock, patch, call
 
 TEST_CONVERSATION_ID = "test-conv-001"
 TEST_USER_ID = "test-user@example.com"
-TEST_SKILLS_CONFIG = MagicMock(skill_contents=[], mcp_config={"mcpServers": {}})
+
+
+def _make_skills_config():
+    from core.skills import SkillsConfig
+    return SkillsConfig(version="v1.0.0", skills={}, mcp_config={"mcpServers": {}})
+
+
+TEST_SKILLS_CONFIG = _make_skills_config()
 
 
 class TestHistoryHydrationOnCacheMiss:

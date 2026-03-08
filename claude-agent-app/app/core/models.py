@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -75,4 +76,17 @@ class Message(Base):
 
     conversation: Mapped["Conversation"] = relationship(
         "Conversation", back_populates="messages"
+    )
+
+
+class UserSkillPref(Base):
+    """Per-user skill enable/disable preference."""
+
+    __tablename__ = "user_skill_prefs"
+
+    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    skill_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now_utc, onupdate=_now_utc
     )
