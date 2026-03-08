@@ -1,0 +1,17 @@
+bundle:
+  name: claude-agent-app
+
+include:
+  - resources/*.yml
+
+variables:
+  admin_user:
+    description: "Admin user email for CAN_MANAGE permission"
+    default: ${workspace.current_user.userName}
+
+targets:
+  dev:
+    mode: development
+    default: true
+  prod:
+    mode: production

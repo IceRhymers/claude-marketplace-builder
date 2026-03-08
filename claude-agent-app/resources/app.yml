@@ -1,0 +1,22 @@
+resources:
+  apps:
+    claude_agent_app:
+      name: "claude-agent-app"
+      description: >
+        Conversational AI agent app powered by the Claude Agent SDK,
+        with per-user MCP connections, streaming SSE chat, and hot-reloadable skills.
+      source_code_path: ../app
+
+      resources:
+        - name: "claude-agent-app-db"
+          description: "Lakebase PostgreSQL database for conversation state"
+          database:
+            database_name: "databricks_postgres"
+            instance_name: ${resources.database_instances.claude_agent_instance.name}
+            permission: "CAN_CONNECT_AND_CREATE"
+
+      permissions:
+        - level: CAN_USE
+          group_name: users
+        - level: CAN_MANAGE
+          user_name: ${var.admin_user}

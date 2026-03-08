@@ -1,0 +1,138 @@
+"""FastAPI application for the claude-agent-app."""
+
+from __future__ import annotations
+
+import logging
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from fastapi import FastAPI
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
+from starlette.staticfiles import StaticFiles
+
+import core.skills as skills_module
+from core.agent_pool import AgentPool, get_pool
+from core.config import AppConfig
+from core.db import create_engine_from_config, make_session_factory
+from core.skills import load_config_from_volume, reload_if_changed
+from routers.conversations import router as conversations_router
+from routers.me import router as me_router
+from routers.stream import router as stream_router
+from routers.marketplace import router as marketplace_router
+
+logger = logging.getLogger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve index.html for any path not found as a static file (SPA catch-all)."""
+
+    async def get_response(self, path: str, scope) -> Response:
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
+        if response.status_code == 404:
+            response = await super().get_response("index.html", scope)
+        return response
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    logger.info("Starting claude-agent-app")
+
+    config = AppConfig.from_env()
+
+    # Initialize database
+    try:
+        engine = create_engine_from_config(config)
+        session_factory = make_session_factory(engine)
+        app.state.session_factory = session_factory
+        logger.info("Database engine created")
+    except Exception as exc:
+        logger.warning("Database initialization failed (non-fatal in dev): %s", exc)
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from core.models import Base
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        app.state.session_factory = sessionmaker(bind=engine)
+
+    # Load initial skills config
+    if config.skills_volume_path:
+        try:
+            skills_module.current_config = load_config_from_volume(config.skills_volume_path)
+            logger.info(
+                "Loaded skills config version=%s skills=%d",
+                skills_module.current_config.version,
+                len(skills_module.current_config.skill_contents),
+            )
+        except Exception as exc:
+            logger.warning("Failed to load skills config: %s", exc)
+    else:
+        logger.warning("SKILLS_VOLUME_PATH not set — starting with empty skills config")
+
+    # Create agent pool
+    pool = get_pool()
+    app.state.agent_pool = pool
+
+    # Start background scheduler
+    scheduler = BackgroundScheduler()
+
+    if config.skills_volume_path:
+        def _reload_skills():
+            try:
+                reload_if_changed(config.skills_volume_path)
+            except Exception as exc:
+                logger.error("Skills reload error: %s", exc)
+
+        scheduler.add_job(
+            _reload_skills,
+            "interval",
+            seconds=config.skills_reload_interval_seconds,
+            id="skills_reload",
+        )
+
+    def _evict_stale():
+        pool.evict_stale(ttl_minutes=config.agent_ttl_minutes)
+
+    scheduler.add_job(
+        _evict_stale,
+        "interval",
+        minutes=max(1, config.agent_ttl_minutes // 2),
+        id="agent_eviction",
+    )
+
+    scheduler.start()
+    logger.info("Scheduler started")
+
+    yield
+
+    # Shutdown
+    scheduler.shutdown(wait=False)
+    await pool.shutdown()
+    logger.info("claude-agent-app shutdown complete")
+
+
+app = FastAPI(title="Claude Agent App", lifespan=lifespan)
+
+app.include_router(me_router)
+app.include_router(conversations_router)
+app.include_router(stream_router)
+app.include_router(marketplace_router)
+
+# Serve React frontend static build if available
+frontend_dist = Path(__file__).resolve().parent / "frontend" / "dist"
+if frontend_dist.is_dir():
+    logger.info("Mounting frontend from %s", frontend_dist)
+    app.mount("/", SPAStaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+else:
+    logger.warning("Frontend dist not found at %s", frontend_dist)

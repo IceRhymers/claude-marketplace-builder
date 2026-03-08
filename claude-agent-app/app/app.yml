@@ -1,0 +1,18 @@
+command:
+  - python
+  - -c
+  - "import os, uvicorn; uvicorn.run('main:app', host='0.0.0.0', port=int(os.environ.get('DATABRICKS_APP_PORT', '8000')))"
+
+env:
+  - name: PGHOST
+    valueFrom: claude-agent-app-db
+  - name: PGDATABASE
+    value: "databricks_postgres"
+  - name: LAKEBASE_INSTANCE
+    value: "claude-agent-app"
+  - name: SKILLS_VOLUME_PATH
+    value: "/Volumes/catalog/schema/marketplace"
+  - name: AGENT_TTL_MINUTES
+    value: "30"
+  - name: SKILLS_RELOAD_INTERVAL_SECONDS
+    value: "60"

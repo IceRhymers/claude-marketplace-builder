@@ -1,0 +1,5 @@
+resources:
+  database_instances:
+    claude_agent_instance:
+      name: "claude-agent-app"
+      capacity: CU_1
