@@ -7,6 +7,7 @@ import dataclasses
 import json
 import logging
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,15 @@ class SkillsConfig:
 
 # Module-level current config (initially empty)
 current_config: SkillsConfig = SkillsConfig(version="", skill_contents=[], mcp_config={})
+
+# Lock protecting reads and writes to current_config from multiple threads
+_config_lock = threading.Lock()
+
+
+def get_current_config() -> SkillsConfig:
+    """Thread-safe accessor for the current SkillsConfig."""
+    with _config_lock:
+        return current_config
 
 
 def load_config_from_volume(volume_path: str) -> SkillsConfig:
@@ -100,14 +110,18 @@ def reload_if_changed(volume_path: str) -> None:
         logger.error("reload_if_changed: failed to read latest.json: %s", exc)
         return
 
-    if new_version == current_config.version:
+    with _config_lock:
+        current_version = current_config.version
+
+    if new_version == current_version:
         logger.debug("reload_if_changed: version unchanged (%s)", new_version)
         return
 
-    logger.info("reload_if_changed: new version %s (was %s)", new_version, current_config.version)
+    logger.info("reload_if_changed: new version %s (was %s)", new_version, current_version)
     try:
         new_config = load_config_from_volume(volume_path)
-        current_config = new_config
+        with _config_lock:
+            current_config = new_config
         logger.info("reload_if_changed: reloaded config version=%s skills=%d",
                     new_config.version, len(new_config.skill_contents))
     except Exception as exc:

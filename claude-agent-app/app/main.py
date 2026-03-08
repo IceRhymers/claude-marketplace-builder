@@ -17,7 +17,7 @@ import core.skills as skills_module
 from core.agent_pool import AgentPool, get_pool
 from core.config import AppConfig
 from core.db import create_engine_from_config, make_session_factory
-from core.skills import load_config_from_volume, reload_if_changed
+from core.skills import get_current_config, load_config_from_volume, reload_if_changed
 from routers.conversations import router as conversations_router
 from routers.me import router as me_router
 from routers.stream import router as stream_router
@@ -69,11 +69,14 @@ async def lifespan(app: FastAPI):
     # Load initial skills config
     if config.skills_volume_path:
         try:
-            skills_module.current_config = load_config_from_volume(config.skills_volume_path)
+            initial_config = load_config_from_volume(config.skills_volume_path)
+            with skills_module._config_lock:
+                skills_module.current_config = initial_config
+            loaded = get_current_config()
             logger.info(
                 "Loaded skills config version=%s skills=%d",
-                skills_module.current_config.version,
-                len(skills_module.current_config.skill_contents),
+                loaded.version,
+                len(loaded.skill_contents),
             )
         except Exception as exc:
             logger.warning("Failed to load skills config: %s", exc)

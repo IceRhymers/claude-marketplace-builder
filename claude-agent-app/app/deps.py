@@ -27,5 +27,5 @@ def get_agent_pool(request: Request) -> AgentPool:
 
 def get_skills_config(request: Request) -> SkillsConfig:
     """Return the current SkillsConfig from app state."""
-    import core.skills as skills_module
-    return skills_module.current_config
+    from core.skills import get_current_config
+    return get_current_config()

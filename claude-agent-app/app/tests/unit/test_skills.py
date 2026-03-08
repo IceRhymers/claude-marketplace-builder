@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -207,3 +208,80 @@ class TestReloadIfChanged:
         # Since v2.0.0 artifact path doesn't exist, fallback behavior:
         # Either retains old or returns empty — but must not raise
         assert skills_module.current_config is not None
+
+
+class TestGetCurrentConfig:
+    def test_get_current_config_returns_skills_config(self):
+        """get_current_config() returns a SkillsConfig instance."""
+        import core.skills as skills_module
+        from core.skills import get_current_config, SkillsConfig
+
+        skills_module.current_config = SkillsConfig(version="v9.9.9", skill_contents=[], mcp_config={})
+        result = get_current_config()
+        assert isinstance(result, SkillsConfig)
+        assert result.version == "v9.9.9"
+
+    def test_get_current_config_reflects_updated_config(self):
+        """get_current_config() returns the latest config after a reload."""
+        import core.skills as skills_module
+        from core.skills import get_current_config, SkillsConfig
+
+        skills_module.current_config = SkillsConfig(version="v1.0.0", skill_contents=[], mcp_config={})
+        new = SkillsConfig(version="v2.0.0", skill_contents=["updated"], mcp_config={})
+        skills_module.current_config = new
+
+        result = get_current_config()
+        assert result.version == "v2.0.0"
+
+
+class TestSkillsConfigThreading:
+    def test_reload_if_changed_from_thread_concurrent_with_get_current_config(self, tmp_path):
+        """reload_if_changed from a thread concurrent with get_current_config must not raise
+        and must always return a valid SkillsConfig."""
+        import core.skills as skills_module
+        from core.skills import get_current_config, reload_if_changed, SkillsConfig
+
+        # Set up initial config
+        skills_module.current_config = SkillsConfig(version="v1.0.0", skill_contents=[], mcp_config={})
+
+        # Create valid artifact for v2.0.0
+        version = "v2.0.0"
+        artifact_dir = tmp_path / "artifacts" / version
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / ".mcp.json").write_text('{"mcpServers": {}}')
+        latest = {"version": version, "path": f"artifacts/{version}"}
+        (tmp_path / "latest.json").write_text(json.dumps(latest))
+
+        errors = []
+        configs_seen = []
+
+        def writer():
+            """Simulate APScheduler thread calling reload_if_changed."""
+            try:
+                reload_if_changed(str(tmp_path))
+            except Exception as exc:
+                errors.append(("writer", exc))
+
+        def reader():
+            """Simulate async request handler calling get_current_config."""
+            for _ in range(50):
+                try:
+                    cfg = get_current_config()
+                    assert isinstance(cfg, SkillsConfig), f"Expected SkillsConfig, got {type(cfg)}"
+                    configs_seen.append(cfg)
+                except Exception as exc:
+                    errors.append(("reader", exc))
+
+        # Start both threads concurrently
+        t_reader = threading.Thread(target=reader)
+        t_writer = threading.Thread(target=writer)
+
+        t_reader.start()
+        t_writer.start()
+
+        t_reader.join(timeout=5)
+        t_writer.join(timeout=5)
+
+        assert not errors, f"Concurrent access raised exceptions: {errors}"
+        assert all(isinstance(c, SkillsConfig) for c in configs_seen), \
+            "All configs returned must be valid SkillsConfig instances"

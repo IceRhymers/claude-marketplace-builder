@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
 import dataclasses
 import logging
+import shutil
+import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from core.skills import SkillsConfig, substitute_token
 
 logger = logging.getLogger(__name__)
+
+SESSION_BASE = Path(tempfile.gettempdir()) / "claude-agent-sessions"
 
 
 @dataclasses.dataclass
@@ -19,14 +24,23 @@ class AgentEntry:
     agent: Any
     last_accessed: datetime
     user_id: str
+    session_dir: Path
 
 
-def build_agent(system_prompt: str, mcp_config: dict) -> Any:
+def build_agent(system_prompt: str, mcp_config: dict, session_dir: Path) -> Any:
     """Construct a Claude agent with the given system prompt and MCP config.
 
     This is a module-level function so tests can easily patch it.
     In production, this would use the Claude Agent SDK.
     """
+    # Inject session dir constraint into system prompt
+    sandboxed_prompt = (
+        f"{system_prompt}\n\n"
+        f"## File I/O Constraint\n"
+        f"All file operations MUST use the session working directory: `{session_dir}`.\n"
+        f"Never read or write files outside this directory. Use relative paths that resolve within it."
+    )
+
     # Import here to avoid import errors when SDK is unavailable in tests
     try:
         import anthropic
@@ -34,10 +48,12 @@ def build_agent(system_prompt: str, mcp_config: dict) -> Any:
 
         class SimpleAgent:
             """Minimal agent wrapper for streaming responses."""
-            def __init__(self, client, system_prompt, mcp_config):
+            def __init__(self, client, system_prompt, mcp_config, session_dir):
                 self._client = client
                 self._system_prompt = system_prompt
                 self._mcp_config = mcp_config
+                self._session_dir = session_dir
+                self._cwd = str(session_dir)
                 self._history: list[dict] = []
 
             async def stream(self, message: str):
@@ -64,11 +80,16 @@ def build_agent(system_prompt: str, mcp_config: dict) -> Any:
             def close(self):
                 pass
 
-        return SimpleAgent(client, system_prompt, mcp_config)
+        return SimpleAgent(client, sandboxed_prompt, mcp_config, session_dir)
     except ImportError:
         logger.warning("anthropic SDK not available — returning stub agent")
 
         class StubAgent:
+            def __init__(self, session_dir: Path):
+                self._session_dir = session_dir
+                self._cwd = str(session_dir)
+                self._system_prompt = sandboxed_prompt
+
             async def stream(self, message: str):
                 yield {"type": "text_delta", "text": "Agent SDK not configured."}
                 yield {"type": "done"}
@@ -76,7 +97,7 @@ def build_agent(system_prompt: str, mcp_config: dict) -> Any:
             def close(self):
                 pass
 
-        return StubAgent()
+        return StubAgent(session_dir)
 
 
 class AgentPool:
@@ -84,7 +105,11 @@ class AgentPool:
 
     def __init__(self):
         self._pool: dict[str, AgentEntry] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
+
+    def _session_dir(self, conversation_id: str) -> Path:
+        """Return the session sandbox directory for a given conversation."""
+        return SESSION_BASE / conversation_id
 
     async def get_or_create(
         self,
@@ -107,7 +132,7 @@ class AgentPool:
         Raises:
             RuntimeError: If agent initialization fails (MCP connection error, etc.).
         """
-        async with self._lock:
+        with self._lock:
             if conversation_id in self._pool:
                 entry = self._pool[conversation_id]
                 entry.last_accessed = datetime.now(timezone.utc)
@@ -120,8 +145,16 @@ class AgentPool:
             # Substitute user token into MCP config
             mcp_config = substitute_token(skills_config.mcp_config, access_token)
 
+            # Create isolated session directory
+            session_dir = self._session_dir(conversation_id)
+            session_dir.mkdir(parents=True, exist_ok=True)
+
             try:
-                agent = build_agent(system_prompt=system_prompt, mcp_config=mcp_config)
+                agent = build_agent(
+                    system_prompt=system_prompt,
+                    mcp_config=mcp_config,
+                    session_dir=session_dir,
+                )
             except Exception as exc:
                 logger.error("AgentPool: failed to build agent for %s: %s", conversation_id, exc)
                 raise RuntimeError(f"Agent initialization failed: {exc}") from exc
@@ -130,27 +163,35 @@ class AgentPool:
                 agent=agent,
                 last_accessed=datetime.now(timezone.utc),
                 user_id=user_id,
+                session_dir=session_dir,
             )
             logger.info("AgentPool: spawned new agent for conversation %s (user=%s)", conversation_id, user_id)
             return agent
 
     def evict(self, conversation_id: str) -> None:
         """Remove a single conversation from the pool."""
-        entry = self._pool.pop(conversation_id, None)
+        with self._lock:
+            entry = self._pool.pop(conversation_id, None)
         if entry is not None:
             try:
                 entry.agent.close()
             except Exception as exc:
                 logger.warning("AgentPool: close() error during evict: %s", exc)
+            # Clean up session sandbox
+            try:
+                shutil.rmtree(entry.session_dir, ignore_errors=True)
+            except Exception as exc:
+                logger.warning("Failed to clean session dir %s: %s", entry.session_dir, exc)
             logger.info("AgentPool: evicted %s", conversation_id)
 
     def evict_stale(self, ttl_minutes: int) -> None:
         """Remove all entries that have been idle longer than ttl_minutes."""
         cutoff = datetime.now(timezone.utc) - timedelta(minutes=ttl_minutes)
-        stale_keys = [
-            k for k, entry in self._pool.items()
-            if entry.last_accessed < cutoff
-        ]
+        with self._lock:
+            stale_keys = [
+                k for k, entry in self._pool.items()
+                if entry.last_accessed < cutoff
+            ]
         for key in stale_keys:
             self.evict(key)
         if stale_keys:
@@ -158,14 +199,19 @@ class AgentPool:
 
     async def shutdown(self) -> None:
         """Close all agents and clear the pool (called on app shutdown)."""
-        async with self._lock:
-            for conversation_id, entry in list(self._pool.items()):
-                try:
-                    entry.agent.close()
-                except Exception as exc:
-                    logger.warning("AgentPool: close() error on shutdown for %s: %s", conversation_id, exc)
+        with self._lock:
+            entries = list(self._pool.items())
             self._pool.clear()
-            logger.info("AgentPool: shutdown complete")
+        for conversation_id, entry in entries:
+            try:
+                entry.agent.close()
+            except Exception as exc:
+                logger.warning("AgentPool: close() error on shutdown for %s: %s", conversation_id, exc)
+            try:
+                shutil.rmtree(entry.session_dir, ignore_errors=True)
+            except Exception as exc:
+                logger.warning("Failed to clean session dir %s: %s", entry.session_dir, exc)
+        logger.info("AgentPool: shutdown complete")
 
 
 # Singleton pool instance
