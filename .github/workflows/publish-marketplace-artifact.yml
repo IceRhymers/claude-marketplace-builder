@@ -1,0 +1,144 @@
+name: Publish Marketplace Artifact
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Artifact version (e.g. v1.2.3)"
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: claude-agent-app/app
+        run: uv sync --all-groups
+
+      - name: Run backend tests
+        working-directory: claude-agent-app/app
+        env:
+          PGHOST: localhost
+          PGDATABASE: test_db
+          PGUSER: testuser
+          PGPASSWORD: testpassword
+          LAKEBASE_INSTANCE: test-instance
+          SKILLS_VOLUME_PATH: /tmp/test-volume
+          AGENT_TTL_MINUTES: "30"
+          SKILLS_RELOAD_INTERVAL_SECONDS: "60"
+        run: uv run pytest tests/ -v
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install frontend dependencies
+        working-directory: claude-agent-app/app/frontend
+        run: pnpm install
+
+      - name: Build frontend
+        working-directory: claude-agent-app/app/frontend
+        run: pnpm build
+
+      - name: Run frontend tests
+        working-directory: claude-agent-app/app/frontend
+        run: pnpm test:run
+
+  publish:
+    name: Build and publish artifact
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate required secrets
+        run: |
+          missing=""
+          [[ -z "${{ secrets.DATABRICKS_HOST }}" ]] && missing="$missing DATABRICKS_HOST"
+          [[ -z "${{ secrets.DATABRICKS_TOKEN }}" ]] && missing="$missing DATABRICKS_TOKEN"
+          [[ -z "${{ secrets.VOLUME_PATH }}" ]] && missing="$missing VOLUME_PATH"
+          if [[ -n "$missing" ]]; then
+            echo "ERROR: Missing required secrets:$missing" >&2
+            exit 1
+          fi
+
+      - name: Install Databricks CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+      - name: Build artifact
+        working-directory: claude-agent-app
+        env:
+          SKILLS_DIR: skills
+          MCP_JSON: .mcp.json
+          DIST_DIR: dist
+        run: bash scripts/build-artifact.sh "${{ steps.version.outputs.version }}"
+
+      - name: Upload artifact to Databricks Volume
+        working-directory: claude-agent-app
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          VOLUME_PATH: ${{ secrets.VOLUME_PATH }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          TARBALL="dist/${VERSION}.tar.gz"
+          DEST_DIR="${VOLUME_PATH}/artifacts/${VERSION}"
+
+          echo "Uploading ${TARBALL} to ${DEST_DIR}/${VERSION}.tar.gz"
+          databricks fs cp "${TARBALL}" "${DEST_DIR}/${VERSION}.tar.gz" --overwrite
+
+          echo "Updating latest.json at ${VOLUME_PATH}/latest.json"
+          databricks fs cp "dist/latest.json" "${VOLUME_PATH}/latest.json" --overwrite
+
+          echo "Published version=${VERSION}"
