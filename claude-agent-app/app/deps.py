@@ -48,3 +48,21 @@ def get_user_skill_prefs(
     rows = db.query(UserSkillPref).filter(UserSkillPref.user_id == user_id).all()
     disabled = {r.skill_name for r in rows if not r.enabled}
     return {name for name in skills_config.skills if name not in disabled}
+
+
+def get_user_mcp_prefs(user_id: str, db: Session, mcp_config: dict) -> set[str]:
+    """Return set of enabled MCP server names for user. Defaults all to enabled.
+
+    For each server in mcp_config["mcpServers"]:
+    - If a user_mcp_prefs row exists for this server and enabled=False, exclude it
+    - Otherwise include it (default: enabled)
+
+    Also ignores pref rows for servers no longer in mcp_config["mcpServers"].
+    """
+    from core.models import UserMcpPref
+    available = set((mcp_config or {}).get("mcpServers", {}).keys())
+    if not available:
+        return set()
+    rows = db.query(UserMcpPref).filter(UserMcpPref.user_id == user_id).all()
+    disabled = {r.mcp_name for r in rows if not r.enabled}
+    return available - disabled

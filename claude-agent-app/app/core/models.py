@@ -90,3 +90,16 @@ class UserSkillPref(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_now_utc, onupdate=_now_utc
     )
+
+
+class UserMcpPref(Base):
+    """Per-user MCP server enable/disable preference."""
+
+    __tablename__ = "user_mcp_prefs"
+
+    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    mcp_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now_utc, onupdate=_now_utc
+    )

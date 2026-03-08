@@ -248,7 +248,26 @@ class AgentPool:
                 # No DB available — default all skills to enabled
                 enabled_skills = set(skills_config.skills.keys())
 
-            # Step 3: Hydrate history from DB
+            # Step 3: Resolve enabled MCP servers for this user
+            if db is not None:
+                try:
+                    from deps import get_user_mcp_prefs
+                    enabled_mcp_names = get_user_mcp_prefs(user_id, db, mcp_config)
+                    # Filter mcp_config to only enabled servers
+                    filtered_mcp_config = {
+                        "mcpServers": {
+                            name: cfg
+                            for name, cfg in mcp_config.get("mcpServers", {}).items()
+                            if name in enabled_mcp_names
+                        }
+                    }
+                except Exception as exc:
+                    logger.error("AgentPool: mcp prefs lookup failed for %s: %s", conversation_id, exc)
+                    raise RuntimeError(f"MCP prefs lookup failed: {exc}") from exc
+            else:
+                filtered_mcp_config = mcp_config
+
+            # Step 4: Hydrate history from DB
             history: list[dict] = []
             if db is not None:
                 try:
@@ -264,11 +283,11 @@ class AgentPool:
                     logger.error("AgentPool: history hydration failed for %s: %s", conversation_id, exc)
                     raise RuntimeError(f"History hydration failed: {exc}") from exc
 
-            # Step 4: Build the agent (copies skills, initialises SDK)
+            # Step 5: Build the agent (copies skills, initialises SDK)
             try:
                 agent = build_agent(
                     session_dir=session_dir,
-                    mcp_config=mcp_config,
+                    mcp_config=filtered_mcp_config,
                     enabled_skill_names=enabled_skills,
                     skills_config=skills_config,
                 )
@@ -276,10 +295,10 @@ class AgentPool:
                 logger.error("AgentPool: failed to build agent for %s: %s", conversation_id, exc)
                 raise RuntimeError(f"Agent initialization failed: {exc}") from exc
 
-            # Step 5: Inject history into agent
+            # Step 6: Inject history into agent
             agent._history = history
 
-            # Step 6: Store in pool
+            # Step 7: Store in pool
             entry.agent = agent
             self._pool[conversation_id] = entry
             logger.info("AgentPool: spawned new agent for conversation %s (user=%s)", conversation_id, user_id)

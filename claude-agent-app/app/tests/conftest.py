@@ -363,3 +363,24 @@ def mock_scheduler():
     scheduler.start = MagicMock()
     scheduler.shutdown = MagicMock()
     return scheduler
+
+
+# ---------------------------------------------------------------------------
+# MCP config fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mock_mcp_config():
+    """Return a minimal MCP config dict with two servers: slack and github."""
+    return {
+        "mcpServers": {
+            "slack": {"command": "npx", "args": ["-y", "@slack/mcp"]},
+            "github": {"command": "npx", "args": ["-y", "@github/mcp"]},
+        }
+    }
+
+
+@pytest.fixture
+def mock_user_mcp_prefs():
+    """Return a set of enabled MCP server names: slack and github (both enabled by default)."""
+    return {"slack", "github"}
