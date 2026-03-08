@@ -53,6 +53,7 @@ async def stream_conversation(
                 user_id=current_user.user_id,
                 access_token=current_user.access_token,
                 skills_config=skills_config,
+                db=db,
             )
 
             # Stream events from agent

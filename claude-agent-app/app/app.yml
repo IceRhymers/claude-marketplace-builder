@@ -16,3 +16,9 @@ env:
     value: "30"
   - name: SKILLS_RELOAD_INTERVAL_SECONDS
     value: "60"
+  - name: AGENT_SESSIONS_VOLUME_PATH
+    value: "/Volumes/catalog/schema/agent-sessions"
+  - name: CONVERSATION_TTL_DAYS
+    value: "30"
+  - name: CONVERSATION_TTL_CHECK_HOURS
+    value: "24"

@@ -15,6 +15,7 @@ from starlette.staticfiles import StaticFiles
 
 import core.skills as skills_module
 from core.agent_pool import AgentPool, get_pool
+from core.cleanup import purge_stale_conversations
 from core.config import AppConfig
 from core.db import create_engine_from_config, make_session_factory
 from core.skills import get_current_config, load_config_from_volume, reload_if_changed
@@ -113,6 +114,39 @@ async def lifespan(app: FastAPI):
         minutes=max(1, config.agent_ttl_minutes // 2),
         id="agent_eviction",
     )
+
+    # Set up WorkspaceClient on pool for Volume operations
+    try:
+        from databricks.sdk import WorkspaceClient
+        ws_client = WorkspaceClient()
+        pool.set_workspace_client(ws_client)
+        logger.info("WorkspaceClient configured on AgentPool")
+    except Exception as exc:
+        logger.warning("WorkspaceClient setup failed (non-fatal in dev): %s", exc)
+        ws_client = None
+
+    # Register TTL cleanup job
+    if ws_client is not None:
+        def _ttl_cleanup():
+            try:
+                purge_stale_conversations(
+                    session_factory=session_factory,
+                    pool=pool,
+                    workspace_client=ws_client,
+                    ttl_days=config.conversation_ttl_days,
+                    volume_base=config.agent_sessions_volume_path,
+                )
+            except Exception as exc:
+                logger.error("TTL cleanup job error: %s", exc)
+
+        from datetime import datetime as _dt
+        scheduler.add_job(
+            _ttl_cleanup,
+            "interval",
+            hours=config.conversation_ttl_check_hours,
+            id="conversation_ttl_cleanup",
+            next_run_time=_dt.now(),
+        )
 
     scheduler.start()
     logger.info("Scheduler started")

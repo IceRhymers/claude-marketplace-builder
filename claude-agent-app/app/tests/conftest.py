@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
+from datetime import datetime, timedelta, timezone
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
@@ -43,7 +45,33 @@ def mock_workspace_client():
         token="mock-oauth-token"
     )
 
+    # files — used for Volume operations (upload, download, delete, list_directory_contents)
+    files_mock = MagicMock()
+    files_mock.upload = MagicMock(return_value=None)
+    files_mock.download = MagicMock(return_value=MagicMock(contents=io.BytesIO(b"")))
+    files_mock.delete = MagicMock(return_value=None)
+    files_mock.list_directory_contents = MagicMock(return_value=[])
+    client.files = files_mock
+
     return client
+
+
+@pytest.fixture
+def mock_workspace_files(mock_workspace_client):
+    """Return the files sub-mock from mock_workspace_client for targeted assertions."""
+    return mock_workspace_client.files
+
+
+@pytest.fixture
+def session_dir_with_files(tmp_path):
+    """Create a real tmp dir with sample files (output.csv and results.txt)."""
+    session_dir = tmp_path / "test-session"
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    (session_dir / "output.csv").write_text("id,name,value\n1,foo,10\n2,bar,20\n")
+    (session_dir / "results.txt").write_text("Processing complete.\n3 items processed.\n")
+
+    return session_dir
 
 
 # ---------------------------------------------------------------------------
@@ -89,6 +117,9 @@ def mock_agent_pool():
 # SQLAlchemy session fixture
 # ---------------------------------------------------------------------------
 
+TEST_CONVERSATION_ID = "test-conv-001"
+
+
 @pytest.fixture
 def db_session(env_vars):
     """Yield a SQLAlchemy session connected to an in-memory SQLite test database."""
@@ -111,3 +142,159 @@ def db_session(env_vars):
     finally:
         session.close()
         Base.metadata.drop_all(engine)
+
+
+@pytest.fixture
+def populated_messages_db(env_vars):
+    """Yield a db_session pre-populated with one Conversation and 4 Messages.
+
+    Messages alternate user/assistant roles and have created_at 1 second apart
+    to allow ordering assertions.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from core.models import Base, Conversation, Message
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    base_time = datetime(2024, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+    conv = Conversation(
+        id=TEST_CONVERSATION_ID,
+        user_id="test-user@example.com",
+        title="Test Conversation",
+        created_at=base_time,
+        updated_at=base_time,
+    )
+    session.add(conv)
+    session.flush()
+
+    roles = ["user", "assistant", "user", "assistant"]
+    contents = [
+        "Hello, what can you do?",
+        "I can help with many tasks!",
+        "Can you write code?",
+        "Yes, I can write code in many languages.",
+    ]
+    for i, (role, content) in enumerate(zip(roles, contents)):
+        msg = Message(
+            id=f"msg-{i+1:03d}",
+            conversation_id=TEST_CONVERSATION_ID,
+            user_id="test-user@example.com",
+            role=role,
+            content=content,
+            created_at=base_time + timedelta(seconds=i),
+        )
+        session.add(msg)
+
+    session.commit()
+
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+@pytest.fixture
+def mock_volume_with_files(mock_workspace_client):
+    """Configure files mock to return 2 FileInfo-like objects and stub download content."""
+    file1 = MagicMock()
+    file1.path = "/Volumes/catalog/schema/agent-sessions/user-id/conv-id/output.csv"
+    file1.is_directory = False
+
+    file2 = MagicMock()
+    file2.path = "/Volumes/catalog/schema/agent-sessions/user-id/conv-id/results.txt"
+    file2.is_directory = False
+
+    mock_workspace_client.files.list_directory_contents.return_value = [file1, file2]
+
+    def _download(path):
+        content_map = {
+            file1.path: b"id,name\n1,foo\n",
+            file2.path: b"Processing done\n",
+        }
+        data = content_map.get(path, b"")
+        return MagicMock(contents=io.BytesIO(data))
+
+    mock_workspace_client.files.download.side_effect = _download
+
+    return mock_workspace_client.files
+
+
+@pytest.fixture
+def mock_volume_empty(mock_workspace_client):
+    """Configure files mock to return empty list (path exists but no files)."""
+    mock_workspace_client.files.list_directory_contents.return_value = []
+    return mock_workspace_client.files
+
+
+@pytest.fixture
+def stale_conversations_db(env_vars):
+    """Yield a db_session with 2 stale conversations (35 days old) and 1 fresh (5 days old)."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from core.models import Base, Conversation
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    session = SessionLocal()
+
+    now = datetime.now(timezone.utc)
+    stale_time = now - timedelta(days=35)
+    fresh_time = now - timedelta(days=5)
+
+    stale1 = Conversation(
+        id="stale-conv-001",
+        user_id="user-a@example.com",
+        title="Stale conversation 1",
+        created_at=stale_time,
+        updated_at=stale_time,
+    )
+    stale2 = Conversation(
+        id="stale-conv-002",
+        user_id="user-b@example.com",
+        title="Stale conversation 2",
+        created_at=stale_time,
+        updated_at=stale_time,
+    )
+    fresh = Conversation(
+        id="fresh-conv-001",
+        user_id="user-c@example.com",
+        title="Fresh conversation",
+        created_at=fresh_time,
+        updated_at=fresh_time,
+    )
+
+    session.add_all([stale1, stale2, fresh])
+    session.commit()
+
+    try:
+        yield session
+    finally:
+        session.close()
+        Base.metadata.drop_all(engine)
+
+
+@pytest.fixture
+def mock_scheduler():
+    """Return a MagicMock of BackgroundScheduler with add_job and start as MagicMocks."""
+    scheduler = MagicMock()
+    scheduler.add_job = MagicMock()
+    scheduler.start = MagicMock()
+    scheduler.shutdown = MagicMock()
+    return scheduler

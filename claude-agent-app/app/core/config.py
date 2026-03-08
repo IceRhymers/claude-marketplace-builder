@@ -16,6 +16,9 @@ class AppConfig:
     skills_volume_path: str
     agent_ttl_minutes: int
     skills_reload_interval_seconds: int
+    conversation_ttl_days: int
+    conversation_ttl_check_hours: int
+    agent_sessions_volume_path: str
 
     @classmethod
     def from_env(cls) -> AppConfig:
@@ -37,6 +40,11 @@ class AppConfig:
             skills_reload_interval_seconds=int(
                 os.environ.get("SKILLS_RELOAD_INTERVAL_SECONDS", "60")
             ),
+            conversation_ttl_days=int(os.environ.get("CONVERSATION_TTL_DAYS", "30")),
+            conversation_ttl_check_hours=int(
+                os.environ.get("CONVERSATION_TTL_CHECK_HOURS", "24")
+            ),
+            agent_sessions_volume_path=os.environ.get("AGENT_SESSIONS_VOLUME_PATH", ""),
         )
 
     @property

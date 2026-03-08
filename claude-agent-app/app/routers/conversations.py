@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from core.auth import CurrentUser, get_current_user
+from core.auth import CurrentUser, get_current_user, WorkspaceClient
 from core.models import Conversation, Message
 from core.agent_pool import AgentPool
 from deps import get_db, get_agent_pool
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -98,7 +102,14 @@ def delete_conversation(
     db: Session = Depends(get_db),
     pool: AgentPool = Depends(get_agent_pool),
 ):
-    """Delete a conversation and all messages (owner-only), evict from pool."""
+    """Delete a conversation and all messages (owner-only).
+
+    Deletion order:
+    1. Evict agent from pool with purge=True (skips Volume sync)
+    2. Delete Volume path (non-fatal on failure)
+    3. Delete DB row (cascade removes messages)
+    4. Return 204 No Content
+    """
     conv = db.query(Conversation).filter(
         Conversation.id == conversation_id,
         Conversation.user_id == current_user.user_id,
@@ -106,7 +117,21 @@ def delete_conversation(
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    # Step 1: Evict from pool (purge=True skips Volume sync — no point syncing files about to be deleted)
+    pool.evict(conversation_id, purge=True)
+
+    # Step 2: Delete Volume files (non-fatal)
+    volume_base = os.environ.get("AGENT_SESSIONS_VOLUME_PATH", "")
+    if volume_base:
+        try:
+            ws = WorkspaceClient()
+            volume_path = f"{volume_base}/{current_user.user_id}/{conversation_id}"
+            ws.files.delete(volume_path)
+        except Exception as exc:
+            logger.warning("Volume delete failed for conversation %s (non-fatal): %s", conversation_id, exc)
+
+    # Step 3: Delete DB row (cascade removes messages)
     db.delete(conv)
     db.commit()
-    pool.evict(conversation_id)
+
     return Response(status_code=204)

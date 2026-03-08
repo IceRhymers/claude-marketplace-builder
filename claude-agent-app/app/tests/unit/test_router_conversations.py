@@ -229,7 +229,7 @@ class TestDeleteConversation:
                 headers={"X-Forwarded-Access-Token": "alice-token"}
             )
             assert resp.status_code == 204
-            mock_pool.evict.assert_called_once_with(conv_id)
+            mock_pool.evict.assert_called_once_with(conv_id, purge=True)
 
     @patch("core.auth.WorkspaceClient")
     def test_delete_non_owned_returns_404(self, mock_wsc_class):
