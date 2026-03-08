@@ -58,3 +58,18 @@ The system SHALL load each SKILL.md file from the artifact directory and concate
 #### Scenario: No skills file loaded gracefully
 - **WHEN** the artifact directory contains no SKILL.md files
 - **THEN** the agent is spawned with a minimal default system prompt and no skill-specific instructions
+
+## Test Requirements
+
+Tests MUST be written in `tests/unit/test_skills.py` BEFORE `core/skills.py` is implemented (RED phase). Filesystem reads are mocked using `unittest.mock.patch` on `open` / `os.path.exists`, or a `tmp_path` fixture with real files.
+
+Required test scenarios:
+- `load_config_from_volume` with valid `latest.json` + SKILL.md + `.mcp.json` → `SkillsConfig` with correct version, skill_contents, mcp_config
+- `latest.json` missing → no exception, empty `SkillsConfig` returned
+- `latest.json` contains invalid JSON → no exception, error logged, empty `SkillsConfig` returned
+- `substitute_token` with `${ACCESS_TOKEN}` in headers → correct token substituted
+- `substitute_token` with `${ACCESS_TOKEN}` in env values → correct token substituted
+- `substitute_token` with no placeholders → dict returned unchanged
+- `reload_if_changed` detects new version in `latest.json` → `current_config` updated to new version
+- `reload_if_changed` version unchanged → artifact directory NOT re-read
+- `reload_if_changed` artifact read raises `IOError` → no exception, `current_config` retains previous value

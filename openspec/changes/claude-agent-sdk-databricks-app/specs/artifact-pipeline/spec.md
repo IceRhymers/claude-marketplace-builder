@@ -56,3 +56,16 @@ The system SHALL write `latest.json` with the schema `{"version": "<semver-or-sh
 #### Scenario: latest.json content after publish
 - **WHEN** version `v1.2.3` is published
 - **THEN** `latest.json` contains `{"version": "v1.2.3", "path": "artifacts/v1.2.3", "published_at": "<current UTC timestamp>"}`
+
+## Test Requirements
+
+Shell script behavior MUST be validated by a test harness (`scripts/test-build-artifact.sh`) written BEFORE `build-artifact.sh` is authored (RED phase). GitHub Actions workflow structure is validated by reviewing YAML against the required `needs: test` constraint before the workflow file is created.
+
+Required test scenarios:
+- `./build-artifact.sh v1.2.3` with `skills/getting-started/SKILL.md` and `.mcp.json` present → `dist/v1.2.3.tar.gz` created; extracting yields `v1.2.3/skills/getting-started/SKILL.md` and `v1.2.3/.mcp.json`
+- `./build-artifact.sh` (no version argument) → exit code non-zero, usage message on stderr
+- `./build-artifact.sh v1.0.0` with no SKILL.md files → exit code `0`, tarball contains only `.mcp.json`, warning on stderr
+- After successful `./build-artifact.sh v1.2.3` → `dist/latest.json` contains keys `version`, `path`, `published_at`
+- GitHub Actions `publish-artifact.yml` YAML must have `needs: test` on the publish job (verified by grep on the YAML file)
+- GitHub Actions `publish-artifact.yml` YAML must define a `workflow_dispatch` trigger with a `version` input (verified by grep)
+- Manual dispatch with `version: v2.0.0-rc1` → artifact named `v2.0.0-rc1.tar.gz` and `latest.json` version field is `v2.0.0-rc1`

@@ -50,3 +50,16 @@ The system SHALL propagate agent initialization errors (e.g., MCP server unreach
 #### Scenario: MCP connection fails during spawn
 - **WHEN** spawning a new agent and an MCP server connection cannot be established
 - **THEN** the pool does not store the failed agent, and the streaming endpoint returns `503 Service Unavailable` with `{"detail": "Agent initialization failed: <reason>"}`
+
+## Test Requirements
+
+Tests MUST be written in `tests/unit/test_agent_pool.py` BEFORE `core/agent_pool.py` is implemented (RED phase). All tests mock `ClaudeAgent` construction using `unittest.mock.patch`.
+
+Required test scenarios:
+- Empty pool: `get_or_create` on a new conversation_id constructs exactly one `ClaudeAgent`
+- Same conversation_id: second `get_or_create` call returns the same agent (constructor called once)
+- `evict_stale(ttl_minutes=0)` empties pool and calls `close()` on each agent
+- Agent accessed within TTL is not evicted by `evict_stale`
+- Two users with different conversation_ids produce two isolated agents in the pool
+- `shutdown()` calls `close()` on all agents and empties `_pool`
+- `ClaudeAgent` constructor raises → pool stays empty, exception propagates as 503

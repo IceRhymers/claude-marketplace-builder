@@ -50,3 +50,17 @@ The system SHALL run `alembic upgrade head` (or equivalent programmatic migratio
 #### Scenario: App starts with valid schema
 - **WHEN** the FastAPI app starts and the Lakebase connection is healthy
 - **THEN** the startup event completes migration without error and the app begins accepting requests
+
+## Test Requirements
+
+Tests MUST be written in `tests/unit/test_models.py` (model validation) and `tests/integration/test_db.py` (Alembic + CRUD) BEFORE any database code is written (RED phase). Integration tests use the `db_session` fixture which connects to a test PostgreSQL instance.
+
+Required test scenarios:
+- `alembic upgrade head` on a fresh database creates `conversations` and `messages` tables with all columns
+- `alembic upgrade head` called a second time raises no exceptions and makes no changes
+- Inserting a conversation for Alice, then querying with `user_id=alice@example.com` returns only Alice's row
+- Deleting a conversation cascades to delete all its messages
+- Inserting a message updates the parent conversation's `updated_at` to be newer than `created_at`
+- Inserting a message with `role="system"` raises a database constraint violation
+- `get_conversations(user_id="alice")` with mixed-user data returns only Alice's conversations
+- `get_messages(conversation_id, user_id="bob")` for Alice's conversation returns empty / raises 404

@@ -32,3 +32,15 @@ The system SHALL make the raw `access_token` from `CurrentUser` available to the
 #### Scenario: Token passed to agent spawn
 - **WHEN** a streaming request triggers a new agent spawn
 - **THEN** the `access_token` from `CurrentUser` is passed to `AgentPool.get_or_create(conversation_id, user_id, access_token)` and used in MCP transport configuration
+
+## Test Requirements
+
+Tests MUST be written in `tests/unit/test_auth.py` BEFORE `core/auth.py` is implemented (RED phase). All tests patch `core.auth.WorkspaceClient` with `unittest.mock.patch`.
+
+Required test scenarios:
+- Valid token → `CurrentUser(user_id="alice@example.com", access_token="valid-token")` returned
+- `None` / empty `x_forwarded_access_token` → `HTTPException(status_code=401, detail=...Missing...)`
+- `WorkspaceClient.current_user.me()` raises `PermissionDenied` → `HTTPException(status_code=401, detail=...Invalid token...)`
+- Route with `Depends(get_current_user)` called via `httpx.AsyncClient` with header → handler receives populated `CurrentUser`
+- Route with `Depends(get_current_user)` called without header → `401` response and handler body not executed
+- Streaming endpoint: `mock_agent_pool.get_or_create` called with `access_token` matching the request header value

@@ -73,3 +73,20 @@ The system SHALL allow a user to delete one of their conversations and all assoc
 #### Scenario: Delete non-owned conversation
 - **WHEN** a user sends `DELETE /api/conversations/{conversation_id}` for a conversation they do not own
 - **THEN** the system returns `404 Not Found` without modifying any data
+
+## Test Requirements
+
+Tests MUST be written in `tests/unit/test_router_conversations.py` and `tests/integration/test_stream.py` BEFORE any router implementation begins (RED phase). Use `mock_workspace_client` and `mock_agent_pool` fixtures from `conftest.py`; use `httpx.AsyncClient` with `ASGITransport` for integration tests.
+
+Required test scenarios:
+- `POST /api/conversations` with valid token → `201` with `conversation_id` and `created_at`
+- `POST /api/conversations` without token → `401`
+- `GET /api/conversations` returns only the authenticated user's conversations
+- `GET /api/conversations/{id}/messages` with non-owner token → `404`
+- `DELETE /api/conversations/{id}` owned conversation → `204` and `mock_agent_pool.evict` called once
+- `DELETE /api/conversations/{id}` non-owned → `404`
+- `GET /api/conversations/{id}/stream` emits at least one `text_delta` event and a `done` event
+- `GET /api/conversations/{id}/stream` for non-owned conversation → `404` before SSE opens
+- Tool call events (`tool_use`, `tool_result`) appear in SSE stream in correct order
+- Messages table contains `user` and `assistant` rows after stream completes (done event)
+- Partial stream cancelled by disconnect → no messages persisted (atomicity)

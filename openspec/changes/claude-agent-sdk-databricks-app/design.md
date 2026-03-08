@@ -76,6 +76,16 @@ The Databricks Apps reverse proxy injects `X-Forwarded-Access-Token` with each u
 
 **Rationale:** Calling Claude again just for a title adds latency and cost. Truncated first-message title is "good enough" for conversation list UX and keeps the implementation simple. Can be upgraded later.
 
+### D8: Test-Driven Development enforced — tests written before implementation
+
+**Decision:** For every implementation task in `tasks.md`, a corresponding test-writing task appears immediately before it using the red-green-refactor cycle: write a failing test (RED), implement just enough to make it pass (GREEN), then refactor. No implementation task may be considered complete unless its preceding test task is also complete and the tests are green.
+
+**Rationale:** Testing deferred to the end of a project (as in the original group-10 approach) allows design flaws and regressions to accumulate unchecked. Writing tests first forces implementers to think about the public contract of each module before writing any code, catches integration issues at the earliest possible moment, and produces a living regression suite that protects future changes. The `usage-limits/` app's `tests/` directory demonstrates the canonical test pattern for this repo — `claude-agent-app/` mirrors it exactly.
+
+**Alternative considered:** Keeping tests in a final group and relying on developer discipline to write them. Rejected — historical evidence in this codebase shows testing is deprioritized when it is the last item. Structural enforcement (task ordering) is more reliable than convention.
+
+**Implementation:** See `claude-agent-sdk-tdd` change for the testing framework spec, updated task ordering, and fixture contracts.
+
 ## Risks / Trade-offs
 
 **[Risk] Single-instance AgentPool is lost on redeploy**
