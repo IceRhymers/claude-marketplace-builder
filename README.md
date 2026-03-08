@@ -128,6 +128,35 @@ Databricks-hosted MCP server connections for Claude Code.
 |-------|-------------|------------|
 | `mcp-setup` | Verify Databricks auth and troubleshoot MCP server connections | `/mcp-setup` |
 
+## Databricks Apps
+
+Databricks Apps in this repo provide hosted web applications backed by FastAPI + React, running on Databricks compute with Lakebase (PostgreSQL) for persistence.
+
+### usage-limits
+
+[`usage-limits/`](usage-limits/) — Tracks Claude Code token usage per user, enforces daily/weekly/monthly budgets, and provides a dashboard for monitoring.
+
+- FastAPI + React 19 + TanStack Router
+- Lakebase (PostgreSQL) via SQLAlchemy
+- APScheduler for background budget evaluation
+- Databricks SQL for usage telemetry
+
+### claude-agent-app
+
+[`claude-agent-app/`](claude-agent-app/) — Conversational AI agent app powered by the Claude Agent SDK with streaming SSE chat, per-user MCP connections, and hot-reloadable skills from a Databricks Volume.
+
+- FastAPI + React 19 + TanStack Router
+- Lakebase (PostgreSQL) for conversation/message persistence
+- AgentPool with TTL eviction (in-process, APScheduler)
+- Volume-backed skill system with `latest.json` pointer and hot-reload
+- User-scoped MCP connections via `X-Forwarded-Access-Token`
+- SSE streaming via `sse-starlette`
+
+**References:**
+- [`claude-agent-app/references/agent-sdk-setup.md`](claude-agent-app/references/agent-sdk-setup.md) — Agent SDK install and config
+- [`claude-agent-app/references/mcp-proxy-setup.md`](claude-agent-app/references/mcp-proxy-setup.md) — UC MCP proxy endpoint and auth
+- [`claude-agent-app/references/volume-setup.md`](claude-agent-app/references/volume-setup.md) — Unity Catalog Volume path convention
+
 ## Related Projects
 
 These companion projects are developed separately and used by this marketplace:
