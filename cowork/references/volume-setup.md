@@ -23,9 +23,14 @@ Example:
 └── artifacts/
     └── v1.2.3/                    # Versioned artifact directory
         ├── skills/
-        │   └── getting-started/
-        │       └── SKILL.md
-        └── .mcp.json
+        │   ├── getting-started/
+        │   │   └── SKILL.md
+        │   ├── databricks-lineage/
+        │   │   ├── SKILL.md
+        │   │   └── scripts/
+        │   └── ...
+        ├── .mcp.json              # Merged from all plugin .mcp.json files
+        └── manifest.json
 ```
 
 ## latest.json Schema
@@ -42,6 +47,25 @@ Example:
 - `path`: Path to the artifact directory **relative to** `SKILLS_VOLUME_PATH`
 - `published_at`: ISO 8601 UTC timestamp
 
+## Artifact Source
+
+The artifact is built from the marketplace plugin tree at `plugins/*/` in the repo root. The build script:
+
+1. Discovers plugins by reading each `plugins/<name>/.claude-plugin/plugin.json`
+2. Copies all skill directories from each plugin's `skills/` path
+3. Merges `.mcp.json` files from all plugin roots into a single MCP config
+4. Generates `manifest.json` with skill metadata
+
+This means **skills are authored in `plugins/*/skills/`** — the same location used by the Claude Code plugin system. There is no separate skill directory in the cowork app.
+
+## MCP Configuration
+
+The merged `.mcp.json` may contain `${VAR}` placeholders that are resolved at runtime:
+
+- `${ACCESS_TOKEN}` — replaced with the user's OAuth token
+- `${DATABRICKS_HOST}`, `${GENIE_SPACE_ID}`, etc. — resolved from app environment variables
+- `${VAR:-default}` — uses `default` if `VAR` is not set in the environment
+
 ## One-Time Setup
 
 1. Create the Unity Catalog Volume (requires `CREATE VOLUME` privilege on the schema):
@@ -57,12 +81,12 @@ Example:
      value: "/Volumes/main/claude_agent/marketplace"
    ```
 
-3. Publish the initial skills artifact:
+3. Build and publish the initial skills artifact:
 
    ```bash
    cd cowork
-   ./scripts/build-artifact.sh v0.1.0
-   # Then upload to the volume (requires Databricks CLI)
+   make build-artifact VERSION=v0.1.0
+   # Upload to the volume (requires Databricks CLI)
    databricks fs cp dist/v0.1.0.tar.gz /Volumes/main/claude_agent/marketplace/artifacts/v0.1.0/v0.1.0.tar.gz
    databricks fs cp dist/latest.json /Volumes/main/claude_agent/marketplace/latest.json
    ```

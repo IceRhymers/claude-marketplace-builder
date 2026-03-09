@@ -6,6 +6,7 @@ import copy
 import dataclasses
 import json
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Any
@@ -108,18 +109,59 @@ def load_config_from_volume(volume_path: str) -> SkillsConfig:
 
 
 def substitute_token(mcp_config: dict[str, Any], access_token: str) -> dict[str, Any]:
-    """Replace ${ACCESS_TOKEN} placeholders with the provided token.
+    """Replace ${VAR} placeholders in MCP config with env vars and access token.
+
+    Resolution order for each ``${VAR}`` or ``${VAR:-default}`` placeholder:
+    1. ``ACCESS_TOKEN`` is always resolved from the *access_token* parameter
+       (user OAuth token), regardless of ``os.environ``.
+    2. All other variables are resolved from ``os.environ``.
+    3. If ``${VAR:-default}`` syntax is used and the variable is unset, the
+       *default* value is used.
+    4. If no default and the variable is unset, the placeholder is left as-is
+       and a warning is logged.
 
     Returns a deep copy with substitutions applied; original is unchanged.
     """
+    import re
+
+    _PATTERN = re.compile(r'\$\{([^}]+)\}')
+
+    def _resolve(match: re.Match) -> str:
+        expr = match.group(1)
+        # Parse ${VAR:-default} syntax
+        if ":-" in expr:
+            var_name, default = expr.split(":-", 1)
+        else:
+            var_name, default = expr, None
+
+        # ACCESS_TOKEN always comes from the parameter
+        if var_name == "ACCESS_TOKEN":
+            return access_token
+
+        value = os.environ.get(var_name)
+        if value is not None:
+            return value
+        if default is not None:
+            return default
+
+        logger.warning("Unresolvable MCP placeholder: ${%s}", var_name)
+        return match.group(0)  # leave as-is
+
     result = copy.deepcopy(mcp_config)
-    placeholder = "${ACCESS_TOKEN}"
     for server_name, server_conf in result.get("mcpServers", {}).items():
-        for section in ("headers", "env"):
-            if section in server_conf and isinstance(server_conf[section], dict):
+        for section in ("headers", "env", "args", "url"):
+            if section not in server_conf:
+                continue
+            if isinstance(server_conf[section], dict):
                 for key, val in server_conf[section].items():
-                    if isinstance(val, str) and placeholder in val:
-                        server_conf[section][key] = val.replace(placeholder, access_token)
+                    if isinstance(val, str) and "${" in val:
+                        server_conf[section][key] = _PATTERN.sub(_resolve, val)
+            elif isinstance(server_conf[section], list):
+                for i, val in enumerate(server_conf[section]):
+                    if isinstance(val, str) and "${" in val:
+                        server_conf[section][i] = _PATTERN.sub(_resolve, val)
+            elif isinstance(server_conf[section], str) and "${" in server_conf[section]:
+                server_conf[section] = _PATTERN.sub(_resolve, server_conf[section])
     return result
 
 

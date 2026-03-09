@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
-# Build a versioned skills artifact tarball.
+# Build a versioned skills artifact from the marketplace plugin tree.
 #
 # Usage:
 #   ./build-artifact.sh <version>
 #
 # Environment variables (optional overrides for testing):
-#   SKILLS_DIR   - Directory containing skill subdirectories (default: ../skills relative to script)
-#   MCP_JSON     - Path to .mcp.json file (default: ../.mcp.json relative to script)
+#   PLUGINS_DIR  - Directory containing plugin subdirectories (default: ../../plugins relative to script)
 #   DIST_DIR     - Output directory (default: ../dist relative to script)
 #
 # Output layout inside tarball:
 #   <version>/skills/<skill-name>/        (full directory tree preserved)
-#   <version>/.mcp.json
+#   <version>/.mcp.json                   (merged from all plugin .mcp.json files)
 #   <version>/manifest.json
 #
 # Also writes $DIST_DIR/latest.json with:
@@ -34,14 +33,12 @@ VERSION="$1"
 
 # -- Configure paths ----------------------------------------------------------
 
-SKILLS_DIR="${SKILLS_DIR:-$APP_DIR/skills}"
-MCP_JSON="${MCP_JSON:-$APP_DIR/.mcp.json}"
+PLUGINS_DIR="${PLUGINS_DIR:-$(cd "$APP_DIR/../plugins" 2>/dev/null && pwd || echo "$APP_DIR/../plugins")}"
 DIST_DIR="${DIST_DIR:-$APP_DIR/dist}"
 
 echo "Building artifact version=$VERSION"
-echo "  Skills dir: $SKILLS_DIR"
-echo "  MCP json:   $MCP_JSON"
-echo "  Output dir: $DIST_DIR"
+echo "  Plugins dir: $PLUGINS_DIR"
+echo "  Output dir:  $DIST_DIR"
 
 # -- Prepare staging directory ------------------------------------------------
 
@@ -56,31 +53,114 @@ VERSION_DIR="$STAGING/$VERSION"
 DEST_SKILLS_DIR="$VERSION_DIR/skills"
 mkdir -p "$DEST_SKILLS_DIR"
 
-# -- Collect full skill directory trees ---------------------------------------
+# -- Discover plugins and collect skills --------------------------------------
 
 SKILL_COUNT=0
-if [[ -d "$SKILLS_DIR" ]]; then
+MERGED_MCP_SERVERS=""  # JSON fragments to merge
+MCP_SERVER_NAMES=()    # Track names for duplicate detection
+
+if [[ ! -d "$PLUGINS_DIR" ]]; then
+    echo "ERROR: Plugins directory not found: $PLUGINS_DIR" >&2
+    exit 1
+fi
+
+while IFS= read -r -d '' plugin_dir; do
+    plugin_name="$(basename "$plugin_dir")"
+    plugin_json="$plugin_dir/.claude-plugin/plugin.json"
+
+    # Skip plugins without plugin.json
+    if [[ ! -f "$plugin_json" ]]; then
+        echo "  Skipping $plugin_name (no .claude-plugin/plugin.json)"
+        continue
+    fi
+
+    # Read the skills path from plugin.json
+    skills_rel=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$plugin_json'))
+    print(d.get('skills', './skills/'))
+except Exception:
+    print('./skills/')
+" 2>/dev/null)
+
+    skills_src="$plugin_dir/$skills_rel"
+
+    # Skip plugins with no skills directory
+    if [[ ! -d "$skills_src" ]]; then
+        echo "  Skipping $plugin_name (no skills directory at $skills_rel)"
+        continue
+    fi
+
+    # Copy each skill directory
     while IFS= read -r -d '' skill_dir; do
         skill_name="$(basename "$skill_dir")"
+        if [[ -d "$DEST_SKILLS_DIR/$skill_name" ]]; then
+            echo "  WARNING: Duplicate skill name '$skill_name' (from $plugin_name), overwriting" >&2
+        fi
         cp -r "$skill_dir" "$DEST_SKILLS_DIR/$skill_name"
         SKILL_COUNT=$((SKILL_COUNT + 1))
-    done < <(find "$SKILLS_DIR" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
-fi
+    done < <(find "$skills_src" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
+
+    # Collect .mcp.json if present
+    mcp_json="$plugin_dir/.mcp.json"
+    if [[ -f "$mcp_json" ]]; then
+        # Extract server entries and check for duplicates
+        SERVERS_JSON=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$mcp_json'))
+    servers = d.get('mcpServers', {})
+    for name in servers:
+        print(name)
+except Exception:
+    pass
+" 2>/dev/null)
+
+        while IFS= read -r server_name; do
+            [[ -z "$server_name" ]] && continue
+            for existing in "${MCP_SERVER_NAMES[@]+"${MCP_SERVER_NAMES[@]}"}"; do
+                if [[ "$existing" == "$server_name" ]]; then
+                    echo "  WARNING: Duplicate MCP server name '$server_name' (from $plugin_name)" >&2
+                fi
+            done
+            MCP_SERVER_NAMES+=("$server_name")
+        done <<< "$SERVERS_JSON"
+
+        # Accumulate the JSON fragment
+        if [[ -z "$MERGED_MCP_SERVERS" ]]; then
+            MERGED_MCP_SERVERS="$mcp_json"
+        else
+            MERGED_MCP_SERVERS="$MERGED_MCP_SERVERS:$mcp_json"
+        fi
+    fi
+done < <(find "$PLUGINS_DIR" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
 
 if [[ "$SKILL_COUNT" -eq 0 ]]; then
-    echo "WARNING: No skill directories found in $SKILLS_DIR" >&2
+    echo "WARNING: No skill directories found in $PLUGINS_DIR" >&2
 fi
 
-echo "  Collected $SKILL_COUNT skill(s)"
+echo "  Collected $SKILL_COUNT skill(s) from plugins"
 
-# -- Copy .mcp.json -----------------------------------------------------------
+# -- Merge .mcp.json files ---------------------------------------------------
 
-if [[ -f "$MCP_JSON" ]]; then
-    cp "$MCP_JSON" "$VERSION_DIR/.mcp.json"
-    echo "  Included .mcp.json"
+if [[ -n "$MERGED_MCP_SERVERS" ]]; then
+    python3 -c "
+import json, sys
+merged = {}
+paths = '$MERGED_MCP_SERVERS'.split(':')
+for p in paths:
+    try:
+        d = json.load(open(p))
+        merged.update(d.get('mcpServers', {}))
+    except Exception as e:
+        print(f'WARNING: Failed to parse {p}: {e}', file=sys.stderr)
+print(json.dumps({'mcpServers': merged}, indent=2))
+" > "$VERSION_DIR/.mcp.json"
+    echo "  Merged MCP config from $(echo "$MERGED_MCP_SERVERS" | tr ':' '\n' | wc -l | tr -d ' ') file(s)"
 else
-    echo "WARNING: .mcp.json not found at $MCP_JSON — creating empty config" >&2
     printf '{"mcpServers": {}}\n' > "$VERSION_DIR/.mcp.json"
+    echo "  No .mcp.json files found — creating empty config"
 fi
 
 # -- Build manifest.json ------------------------------------------------------
@@ -100,7 +180,7 @@ while IFS= read -r -d '' skill_dir; do
     FIRST=0
 done < <(find "$DEST_SKILLS_DIR" -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
 
-# Build mcp_servers list from .mcp.json
+# Build mcp_servers list from merged .mcp.json
 MCP_SERVERS_JSON="[]"
 if [[ -f "$VERSION_DIR/.mcp.json" ]]; then
     MCP_SERVERS_JSON=$(python3 -c "

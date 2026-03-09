@@ -305,6 +305,128 @@ class TestSubstituteToken:
         result = substitute_token(original, "token")
         assert result == original
 
+    def test_env_var_substitution(self):
+        """${DATABRICKS_HOST} resolved from os.environ."""
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "genie": {
+                    "url": "${DATABRICKS_HOST}/api/2.0/mcp/genie/${GENIE_SPACE_ID}",
+                    "headers": {"Authorization": "Bearer ${ACCESS_TOKEN}"},
+                }
+            }
+        }
+        with patch.dict(os.environ, {"DATABRICKS_HOST": "https://myhost.cloud.databricks.com", "GENIE_SPACE_ID": "abc123"}):
+            result = substitute_token(mcp_config, "oauth-tok")
+
+        assert result["mcpServers"]["genie"]["url"] == "https://myhost.cloud.databricks.com/api/2.0/mcp/genie/abc123"
+        assert result["mcpServers"]["genie"]["headers"]["Authorization"] == "Bearer oauth-tok"
+
+    def test_default_value_fallback(self):
+        """${VAR:-default} uses default when VAR is unset."""
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "slack": {
+                    "args": ["--url", "${SLACK_MCP_URL:-https://default.example.com/mcp/}"],
+                }
+            }
+        }
+        with patch.dict(os.environ, {}, clear=False):
+            # Ensure SLACK_MCP_URL is not set
+            os.environ.pop("SLACK_MCP_URL", None)
+            result = substitute_token(mcp_config, "tok")
+
+        assert result["mcpServers"]["slack"]["args"][1] == "https://default.example.com/mcp/"
+
+    def test_default_value_overridden_by_env(self):
+        """${VAR:-default} uses env value when VAR is set."""
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "slack": {
+                    "args": ["--url", "${SLACK_MCP_URL:-https://default.example.com/mcp/}"],
+                }
+            }
+        }
+        with patch.dict(os.environ, {"SLACK_MCP_URL": "https://custom.example.com/mcp/"}):
+            result = substitute_token(mcp_config, "tok")
+
+        assert result["mcpServers"]["slack"]["args"][1] == "https://custom.example.com/mcp/"
+
+    def test_unresolvable_placeholder_left_as_is(self, caplog):
+        """${MISSING_VAR} with no default stays as-is, warning logged."""
+        import logging
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "svc": {
+                    "env": {"VAL": "${MISSING_VAR}"},
+                }
+            }
+        }
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MISSING_VAR", None)
+            with caplog.at_level(logging.WARNING, logger="core.skills"):
+                result = substitute_token(mcp_config, "tok")
+
+        assert result["mcpServers"]["svc"]["env"]["VAL"] == "${MISSING_VAR}"
+        assert any("MISSING_VAR" in rec.message for rec in caplog.records)
+
+    def test_access_token_param_overrides_env(self):
+        """ACCESS_TOKEN parameter takes precedence over os.environ."""
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "svc": {
+                    "headers": {"Authorization": "Bearer ${ACCESS_TOKEN}"},
+                }
+            }
+        }
+        with patch.dict(os.environ, {"ACCESS_TOKEN": "env-token"}):
+            result = substitute_token(mcp_config, "oauth-token")
+
+        assert result["mcpServers"]["svc"]["headers"]["Authorization"] == "Bearer oauth-token"
+
+    def test_args_list_substitution(self):
+        """Placeholders in args lists are resolved."""
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "proxy": {
+                    "args": ["uc-mcp-proxy", "--url", "${PROXY_URL:-http://localhost:8080}"],
+                }
+            }
+        }
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PROXY_URL", None)
+            result = substitute_token(mcp_config, "tok")
+
+        assert result["mcpServers"]["proxy"]["args"][2] == "http://localhost:8080"
+
+    def test_url_string_substitution(self):
+        """Top-level url string field is resolved."""
+        from core.skills import substitute_token
+
+        mcp_config = {
+            "mcpServers": {
+                "genie": {
+                    "type": "http",
+                    "url": "${DATABRICKS_HOST}/api/2.0/mcp",
+                }
+            }
+        }
+        with patch.dict(os.environ, {"DATABRICKS_HOST": "https://host.com"}):
+            result = substitute_token(mcp_config, "tok")
+
+        assert result["mcpServers"]["genie"]["url"] == "https://host.com/api/2.0/mcp"
+
 
 class TestReloadIfChanged:
     def test_detects_new_version_and_reloads(self, tmp_path):
