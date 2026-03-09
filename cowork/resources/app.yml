@@ -1,14 +1,14 @@
 resources:
   apps:
-    claude_agent_app:
-      name: "claude-agent-app"
+    cowork:
+      name: "cowork"
       description: >
         Conversational AI agent app powered by the Claude Agent SDK,
         with per-user MCP connections, streaming SSE chat, and hot-reloadable skills.
       source_code_path: ../app
 
       resources:
-        - name: "claude-agent-app-db"
+        - name: "cowork-db"
           description: "Lakebase PostgreSQL database for conversation state"
           database:
             database_name: "databricks_postgres"

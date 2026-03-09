@@ -5,11 +5,11 @@ command:
 
 env:
   - name: PGHOST
-    valueFrom: claude-agent-app-db
+    valueFrom: cowork-db
   - name: PGDATABASE
     value: "databricks_postgres"
   - name: LAKEBASE_INSTANCE
-    value: "claude-agent-app"
+    value: "cowork"
   - name: SKILLS_VOLUME_PATH
     value: "/Volumes/catalog/schema/marketplace"
   - name: AGENT_TTL_MINUTES

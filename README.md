@@ -141,9 +141,9 @@ Databricks Apps in this repo provide hosted web applications backed by FastAPI +
 - APScheduler for background budget evaluation
 - Databricks SQL for usage telemetry
 
-### claude-agent-app
+### cowork
 
-[`claude-agent-app/`](claude-agent-app/) — Conversational AI agent app powered by the Claude Agent SDK with streaming SSE chat, per-user MCP connections, and hot-reloadable skills from a Databricks Volume.
+[`cowork/`](cowork/) — Conversational AI agent app powered by the Claude Agent SDK with streaming SSE chat, per-user MCP connections, and hot-reloadable skills from a Databricks Volume.
 
 - FastAPI + React 19 + TanStack Router
 - Lakebase (PostgreSQL) for conversation/message persistence
@@ -153,9 +153,9 @@ Databricks Apps in this repo provide hosted web applications backed by FastAPI +
 - SSE streaming via `sse-starlette`
 
 **References:**
-- [`claude-agent-app/references/agent-sdk-setup.md`](claude-agent-app/references/agent-sdk-setup.md) — Agent SDK install and config
-- [`claude-agent-app/references/mcp-proxy-setup.md`](claude-agent-app/references/mcp-proxy-setup.md) — UC MCP proxy endpoint and auth
-- [`claude-agent-app/references/volume-setup.md`](claude-agent-app/references/volume-setup.md) — Unity Catalog Volume path convention
+- [`cowork/references/agent-sdk-setup.md`](cowork/references/agent-sdk-setup.md) — Agent SDK install and config
+- [`cowork/references/mcp-proxy-setup.md`](cowork/references/mcp-proxy-setup.md) — UC MCP proxy endpoint and auth
+- [`cowork/references/volume-setup.md`](cowork/references/volume-setup.md) — Unity Catalog Volume path convention
 
 ## Related Projects
 

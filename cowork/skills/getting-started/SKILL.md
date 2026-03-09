@@ -1,14 +1,14 @@
 ---
 name: getting-started
 description: >
-  A beginner-friendly skill that helps users get started with the Claude Agent App.
+  A beginner-friendly skill that helps users get started with the Cowork.
   Use this when users ask what the app can do or how to begin.
 user-invocable: true
 ---
 
 # Getting Started
 
-Welcome to the Claude Agent App! This is an AI-powered assistant backed by Claude with access to configured MCP tools.
+Welcome to the Cowork! This is an AI-powered assistant backed by Claude with access to configured MCP tools.
 
 ## What I can help with
 

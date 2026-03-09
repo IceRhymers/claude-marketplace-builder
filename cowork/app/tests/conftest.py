@@ -1,4 +1,4 @@
-"""Shared fixtures for all claude-agent-app tests."""
+"""Shared fixtures for all cowork tests."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def env_vars(monkeypatch):
     """Set all required environment variables for the app."""
     monkeypatch.setenv("PGHOST", "test-host.cloud.databricks.com")
     monkeypatch.setenv("PGDATABASE", "databricks_postgres")
-    monkeypatch.setenv("LAKEBASE_INSTANCE", "claude-agent-app")
+    monkeypatch.setenv("LAKEBASE_INSTANCE", "cowork")
     monkeypatch.setenv("SKILLS_VOLUME_PATH", "/Volumes/catalog/schema/marketplace")
     monkeypatch.setenv("AGENT_TTL_MINUTES", "30")
     monkeypatch.setenv("SKILLS_RELOAD_INTERVAL_SECONDS", "60")

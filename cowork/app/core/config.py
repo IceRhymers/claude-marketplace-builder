@@ -8,7 +8,7 @@ import os
 
 @dataclasses.dataclass(frozen=True)
 class AppConfig:
-    """Immutable configuration for the claude-agent-app."""
+    """Immutable configuration for the cowork."""
 
     pg_host: str
     pg_database: str

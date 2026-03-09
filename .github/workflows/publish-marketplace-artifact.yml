@@ -48,11 +48,11 @@ jobs:
           python-version: "3.12"
 
       - name: Install backend dependencies
-        working-directory: claude-agent-app/app
+        working-directory: cowork/app
         run: uv sync --all-groups
 
       - name: Run backend tests
-        working-directory: claude-agent-app/app
+        working-directory: cowork/app
         env:
           PGHOST: localhost
           PGDATABASE: test_db
@@ -70,15 +70,15 @@ jobs:
           version: latest
 
       - name: Install frontend dependencies
-        working-directory: claude-agent-app/app/frontend
+        working-directory: cowork/app/frontend
         run: pnpm install
 
       - name: Build frontend
-        working-directory: claude-agent-app/app/frontend
+        working-directory: cowork/app/frontend
         run: pnpm build
 
       - name: Run frontend tests
-        working-directory: claude-agent-app/app/frontend
+        working-directory: cowork/app/frontend
         run: pnpm test:run
 
   publish:
@@ -117,7 +117,7 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
 
       - name: Build artifact
-        working-directory: claude-agent-app
+        working-directory: cowork
         env:
           SKILLS_DIR: skills
           MCP_JSON: .mcp.json
@@ -125,7 +125,7 @@ jobs:
         run: bash scripts/build-artifact.sh "${{ steps.version.outputs.version }}"
 
       - name: Upload artifact to Databricks Volume
-        working-directory: claude-agent-app
+        working-directory: cowork
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}

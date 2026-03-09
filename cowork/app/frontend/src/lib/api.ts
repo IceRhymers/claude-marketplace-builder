@@ -1,5 +1,5 @@
 /**
- * Typed API wrappers for the claude-agent-app backend.
+ * Typed API wrappers for the cowork backend.
  */
 
 export interface MeResponse {

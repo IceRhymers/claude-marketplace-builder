@@ -1,4 +1,4 @@
-"""FastAPI dependency injection for the claude-agent-app."""
+"""FastAPI dependency injection for the cowork."""
 
 from __future__ import annotations
 

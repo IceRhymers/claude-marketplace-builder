@@ -1,5 +1,5 @@
 resources:
   database_instances:
     claude_agent_instance:
-      name: "claude-agent-app"
+      name: "cowork"
       capacity: CU_1

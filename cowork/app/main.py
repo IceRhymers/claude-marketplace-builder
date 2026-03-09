@@ -1,4 +1,4 @@
-"""FastAPI application for the claude-agent-app."""
+"""FastAPI application for the cowork."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    logger.info("Starting claude-agent-app")
+    logger.info("Starting cowork")
 
     config = AppConfig.from_env()
 
@@ -157,10 +157,10 @@ async def lifespan(app: FastAPI):
     # Shutdown
     scheduler.shutdown(wait=False)
     await pool.shutdown()
-    logger.info("claude-agent-app shutdown complete")
+    logger.info("cowork shutdown complete")
 
 
-app = FastAPI(title="Claude Agent App", lifespan=lifespan)
+app = FastAPI(title="Cowork", lifespan=lifespan)
 
 app.include_router(me_router)
 app.include_router(conversations_router)

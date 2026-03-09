@@ -1,5 +1,5 @@
 bundle:
-  name: claude-agent-app
+  name: cowork
 
 include:
   - resources/*.yml

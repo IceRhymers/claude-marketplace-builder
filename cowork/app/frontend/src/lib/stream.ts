@@ -1,5 +1,5 @@
 /**
- * SSE streaming client for the claude-agent-app chat endpoint.
+ * SSE streaming client for the cowork chat endpoint.
  */
 
 export type StreamEvent =

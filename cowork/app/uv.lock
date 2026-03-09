@@ -236,7 +236,7 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-agent-app"
+name = "cowork"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
