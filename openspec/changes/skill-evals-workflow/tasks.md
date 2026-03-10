@@ -44,13 +44,33 @@
 ## 6. Remove skill-routing.yaml and update docs
 
 - [ ] 6.1 Delete `evals/test-cases/skill-routing.yaml`
-- [ ] 6.2 Update `CLAUDE.md` — document that new skills must include `evals/evals.json` with at least one `should_trigger:true` and one `should_trigger:false` entry
-- [ ] 6.3 Update `docs/SKILL-AUTHORING.md` — add section on evals format, how to run `make evals-generate`, and how skill-creator's output can be committed as-is
-- [ ] 6.4 Run `validate-skill.sh --all` — confirm no missing-evals warnings for any skill in `plugins/`
+- [ ] 6.2 Update `docs/SKILL-AUTHORING.md` — add section on evals format, how to run `make evals-generate`, and how skill-creator's output can be committed as-is
+- [ ] 6.3 Run `validate-skill.sh --all` — confirm no missing-evals warnings for any skill in `plugins/`
 
-## 7. Final verification
+## 7. Rewrite .claude/skills/build-skill/SKILL.md as a pipeline orchestrator
 
-- [ ] 7.1 Run full test suite — confirm zero regressions
-- [ ] 7.2 Confirm `evals/test-cases/skill-routing.yaml` no longer exists in the repository
-- [ ] 7.3 Confirm `make evals PLUGIN=databricks-skills` runs only databricks-skills test cases
-- [ ] 7.4 Commit all changes on `feat/skill-evals-workflow`
+- [ ] 7.1 Add staging area to `.gitignore` — add `.claude/skills/staging/` entry
+- [ ] 7.2 Rewrite Phase 1 (Requirements) — keep intake questions but add "target plugin will be selected at promotion time, not now"
+- [ ] 7.3 Rewrite Phase 2 (Stage) — scaffold to `.claude/skills/staging/<skill-name>/` instead of directly to plugin; copy from template into staging
+- [ ] 7.4 Rewrite Phase 3 (Eval Loop) — replace old "add to skill-routing.yaml" step with: create `evals/evals.json`, run `make evals-filter SKILL=<name>` (or equivalent), iterate on description until all entries pass; minimum 2 `true` + 2 `false` entries required to advance
+- [ ] 7.5 Rewrite Phase 4 (Promote) — move staging dir to selected plugin path, run `validate-skill.sh`, run `make evals-generate`, run `make evals PLUGIN=<plugin>`, bump version in plugin.json + marketplace.json
+- [ ] 7.6 Update Checklist at bottom of SKILL.md — replace old eval step with evals.json and pipeline gate steps
+- [ ] 7.7 Add override escape hatch — document "promote anyway" override with warning comment written to SKILL.md frontmatter
+
+## 8. Update CLAUDE.md to enforce pipeline workflow
+
+- [ ] 8.1 Replace "Adding a Skill" section step 1 — change from "Use `/build-skill` to create a new skill interactively, or:" to "**All new skills MUST be created via `/build-skill`** — it runs the full Stage → Eval Loop → Promote pipeline"
+- [ ] 8.2 Demote manual scaffold steps to a collapsed "Advanced / migration only" note — not a first-class option
+- [ ] 8.3 Replace "Eval Requirements" section — remove reference to `skill-routing.yaml`, document `evals/evals.json` format, minimum entry counts, and `make evals-generate`
+- [ ] 8.4 Update project structure diagram — add `.claude/skills/staging/` entry with "(gitignored, in-progress skills)" annotation
+- [ ] 8.5 Update `evals/test-cases/` entry in structure diagram — replace `skill-routing.yaml` with `all.yaml` and `<plugin-name>.yaml` entries
+
+## 9. Final verification
+
+- [ ] 9.1 Run full test suite — confirm zero regressions
+- [ ] 9.2 Confirm `evals/test-cases/skill-routing.yaml` no longer exists in the repository
+- [ ] 9.3 Confirm `make evals PLUGIN=databricks-skills` runs only databricks-skills test cases
+- [ ] 9.4 Run `validate-skill.sh --all` — confirm warnings only for skills without `evals/evals.json`
+- [ ] 9.5 Verify staging area is gitignored — create a test file in `.claude/skills/staging/` and confirm `git status` does not show it
+- [ ] 9.6 Read through updated `build-skill` SKILL.md end-to-end and confirm all three phases (Stage / Eval Loop / Promote) are clearly described with hard gates between them
+- [ ] 9.7 Commit all changes on `feat/skill-evals-workflow`
