@@ -1,0 +1,7 @@
+[
+  {"query": "The budget checker hook isn't blocking me when I'm over budget, how do I troubleshoot it?", "should_trigger": true},
+  {"query": "How do I configure the BUDGET_API_URL for the AI Gateway budget enforcement plugin?", "should_trigger": true},
+  {"query": "Set up budget limits so my team can't exceed $500/month on AI calls", "should_trigger": true},
+  {"query": "My MCP tools aren't showing up in Claude Code", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

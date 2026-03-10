@@ -1,0 +1,7 @@
+[
+  {"query": "Trace the upstream lineage for the table main.sales.orders in Databricks Unity Catalog", "should_trigger": true},
+  {"query": "What are the column-level dependencies for the revenue column in main.finance.quarterly_report?", "should_trigger": true},
+  {"query": "Show me downstream impact if I modify the schema of main.raw.events", "should_trigger": true},
+  {"query": "List all notebooks in the /Repos/team/etl-pipeline directory", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

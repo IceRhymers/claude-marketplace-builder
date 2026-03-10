@@ -1,0 +1,7 @@
+[
+  {"query": "Help me onboard a new engineer to our team and get their dev environment set up", "should_trigger": true},
+  {"query": "Walk me through setting up my development environment as a new hire", "should_trigger": true},
+  {"query": "What tools and repos does a new team member need access to?", "should_trigger": true},
+  {"query": "We have a production outage, help me run incident response", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

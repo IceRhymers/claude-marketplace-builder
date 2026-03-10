@@ -20,6 +20,7 @@ MARKETPLACE := icerhymers-marketplace
 APP       ?= usage-limits ## Databricks app name for test targets (default: usage-limits)
 SKILL     ?=           ## Path to a single skill dir (default: all)
 FILTER    ?=           ## Eval name filter substring (default: none)
+PLUGIN    ?=           ## Plugin name for scoped evals, e.g. PLUGIN=databricks-skills (default: all)
 WORKERS   ?= 8         ## Parallel eval workers (default: 8)
 TIMEOUT   ?= 180       ## Per-test timeout in seconds (default: 180)
 THRESHOLD ?= 95        ## Minimum pass percentage (default: 95)
@@ -56,14 +57,48 @@ else
 	bash scripts/validate-skill.sh $(SKILL)
 endif
 
-## Run skill routing evals
+## Run skill routing evals (uses all.yaml by default; set PLUGIN=<name> to scope to one plugin)
+## NOTE: Run 'make evals-generate' first if you have modified any evals/evals.json files.
 evals:
+ifeq ($(PLUGIN),)
+	@test -f evals/test-cases/all.yaml || (echo "ERROR: evals/test-cases/all.yaml not found — run 'make evals-generate' first" && exit 1)
 	cd evals && uv run skill-evals \
+		-f evals/test-cases/all.yaml \
 		-j $(WORKERS) \
 		--timeout $(TIMEOUT) \
 		--threshold $(THRESHOLD) \
 		--max-retries $(RETRIES) \
-		$(if $(FILTER),-f $(FILTER))
+		$(if $(FILTER),--filter $(FILTER))
+else
+	@test -f evals/test-cases/$(PLUGIN).yaml || (echo "ERROR: evals/test-cases/$(PLUGIN).yaml not found — run 'make evals-generate' or check PLUGIN name" && exit 1)
+	cd evals && uv run skill-evals \
+		-f evals/test-cases/$(PLUGIN).yaml \
+		-j $(WORKERS) \
+		--timeout $(TIMEOUT) \
+		--threshold $(THRESHOLD) \
+		--max-retries $(RETRIES) \
+		$(if $(FILTER),--filter $(FILTER))
+endif
+
+## Generate routing test YAMLs from per-skill evals/evals.json files
+evals-generate:
+	python3 evals/scripts/generate-routing-tests.py \
+		--plugins-dir plugins/ \
+		--out-dir evals/test-cases/
+
+## Check that generated routing test YAMLs are up-to-date (used in CI)
+evals-check-generated:
+	@tmpdir=$$(mktemp -d) && \
+	python3 evals/scripts/generate-routing-tests.py --plugins-dir plugins/ --out-dir $$tmpdir 2>&1 && \
+	diff_out=$$(diff -r --exclude="*.pyc" evals/test-cases/ $$tmpdir/ 2>&1) && \
+	rm -rf $$tmpdir && \
+	if [ -n "$$diff_out" ]; then \
+		echo "ERROR: Generated routing YAMLs are stale. Run 'make evals-generate' and commit the result."; \
+		echo "$$diff_out"; \
+		exit 1; \
+	else \
+		echo "OK: Generated routing YAMLs are up-to-date."; \
+	fi
 
 ## Install eval Python dependencies
 evals-install:
@@ -117,5 +152,6 @@ test-app-unit:
 test-app-integration:
 	cd $(APP)/app && uv run pytest tests/ -m integration -v
 
-.PHONY: help validate evals evals-install install-local uninstall-local init configure \
+.PHONY: help validate evals evals-generate evals-check-generated evals-install \
+	install-local uninstall-local init configure \
 	app-install test-app test-app-coverage test-app-unit test-app-integration

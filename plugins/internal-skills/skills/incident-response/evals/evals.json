@@ -1,0 +1,7 @@
+[
+  {"query": "We have a production outage on the payments service, help me run incident response", "should_trigger": true},
+  {"query": "Walk me through the incident triage process for a P1 database failure", "should_trigger": true},
+  {"query": "Help me write a post-mortem for last night's API degradation incident", "should_trigger": true},
+  {"query": "How do I onboard a new engineer to our team?", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

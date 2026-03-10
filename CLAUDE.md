@@ -33,11 +33,16 @@ plugins/
       mcp-setup/                   Auth verification & troubleshooting
 evals/
   src/skill_evals/                 Python eval runner package (Agent SDK)
-  test-cases/skill-routing.yaml    Skill routing test cases
+  scripts/
+    generate-routing-tests.py      Derives routing YAMLs from per-skill evals.json files
+  test-cases/
+    all.yaml                       Full catalog routing tests (generated — do not edit)
+    <plugin-name>.yaml             Per-plugin routing tests (generated — do not edit)
   pyproject.toml                   uv + hatchling config
 .claude/
   skills/
-    build-skill/SKILL.md           Repo-scoped authoring tool (NOT distributed)
+    build-skill/SKILL.md           Repo-scoped authoring pipeline (NOT distributed)
+    staging/                       In-progress skills under development (gitignored)
 templates/
   basic-skill/                     Simple skill template (no scripts)
   advanced-skill/                  Full skill template (scripts + references)
@@ -63,14 +68,18 @@ docs/
 
 ## Adding a Skill
 
-1. Use `/build-skill` to create a new skill interactively, or:
-2. Pick the target plugin under `plugins/`
-3. Copy a template: `cp -r templates/basic-skill/ plugins/<plugin>/skills/<name>/`
-4. Rename: `mv plugins/<plugin>/skills/<name>/SKILL.md.template plugins/<plugin>/skills/<name>/SKILL.md`
-5. Edit the SKILL.md — fill in frontmatter and content
-6. Validate: `bash scripts/validate-skill.sh plugins/<plugin>/skills/<name>`
-7. **Add at least 1 eval test case** to `evals/test-cases/skill-routing.yaml` (see "Eval Requirements" below)
-8. Bump the version in the plugin's `plugin.json` and root `marketplace.json`
+**All new skills MUST be created via `/build-skill`** — it runs the full Stage → Eval Loop → Promote pipeline and ensures routing evals pass before the skill lands in any plugin.
+
+```
+/build-skill
+```
+
+The pipeline:
+1. **Stage** — scaffolds the skill in `.claude/skills/staging/<skill-name>/` (gitignored, never distributed)
+2. **Eval Loop** — helps write `evals/evals.json`, runs routing evals, iterates on the description until all entries pass
+3. **Promote** — moves to target plugin, runs `validate-skill.sh`, regenerates routing YAMLs, bumps versions
+
+> **Advanced / migration only:** Manual scaffolding directly into `plugins/*/skills/` is reserved for migrating skills that predate this workflow. For new skills, always use `/build-skill`.
 
 ## Adding a Plugin
 
@@ -80,7 +89,7 @@ To add a new plugin group (e.g., `plugins/security-skills/`):
 2. Create `plugins/security-skills/.claude-plugin/plugin.json` (copy from an existing plugin)
 3. Add an entry to `.claude-plugin/marketplace.json` in the `plugins` array
 4. Add the plugin's `plugin.json` path to the `FILES_TO_REPLACE` array in `scripts/init.sh`
-5. Add skills under `plugins/security-skills/skills/`
+5. Add skills under `plugins/security-skills/skills/` (via `/build-skill`)
 6. Update the `PLUGINS` list in the `Makefile`
 
 ## Skill Frontmatter
@@ -110,20 +119,32 @@ claude plugin install icerhymers-databricks-mcp@icerhymers-marketplace
 
 ## Eval Requirements
 
-Every skill **must** have at least one test case in `evals/test-cases/skill-routing.yaml`. This verifies that natural language prompts correctly route to the skill. PRs that add or modify skills without a corresponding eval test case should not be merged.
+Every skill **must** include `evals/evals.json` alongside its `SKILL.md`. This is the single source of truth for routing tests and description quality.
 
-Test case format:
-
-```yaml
-- name: my-skill-descriptive-name
-  prompt: "A natural language prompt that should trigger this skill"
-  expected_skill: my-skill-name
+**Format** (identical to Anthropic's skill-creator):
+```json
+[
+  {"query": "A natural language prompt that should activate this skill", "should_trigger": true},
+  {"query": "Another positive example", "should_trigger": true},
+  {"query": "An unrelated prompt that should NOT activate this skill", "should_trigger": false},
+  {"query": "Another negative example", "should_trigger": false}
+]
 ```
 
-Use `expected_skills` (list, AND logic) or `expected_skill_one_of` (list, OR logic) for multi-skill cases. Run evals locally with:
+**Minimum:** at least **2** `should_trigger: true` entries and **2** `should_trigger: false` entries.
+
+PRs that add or modify skills without a valid `evals/evals.json` should not be merged.
+
+After adding or modifying any `evals/evals.json`, regenerate and commit routing YAMLs:
 
 ```bash
-cd evals && uv run skill-evals -v --filter my-skill
+make evals-generate
+```
+
+Run evals locally:
+```bash
+make evals                          # full catalog
+make evals PLUGIN=databricks-skills # one plugin only
 ```
 
 ## Version Bumping
@@ -139,4 +160,3 @@ Common tasks are exposed via `make` targets (run `make help` to list them). When
 ## Inference Configuration
 
 The inference backend is configured via `config/inference.env` (gitignored). Run `make configure` to set up interactively — it defaults to Databricks AI Gateway. Profile templates under `config/profiles/` document the env vars each backend needs. The Makefile auto-sources `config/inference.env` when it exists, exporting variables to all child processes (evals, etc.).
-

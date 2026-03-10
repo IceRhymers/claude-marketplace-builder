@@ -1,0 +1,7 @@
+[
+  {"query": "Update my Claude Code skills to the latest version", "should_trigger": true},
+  {"query": "Pull the latest changes from the skills marketplace", "should_trigger": true},
+  {"query": "Check if there are new skills available and install them", "should_trigger": true},
+  {"query": "Help me onboard a new engineer to our team", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]
