@@ -3,7 +3,7 @@
 Claude Code Skill Invocation Eval Runner
 
 Usage:
-    uv run skill-evals [test-cases/skill-routing.yaml]
+    uv run skill-evals [test-cases/all.yaml]
 """
 
 import argparse
@@ -40,15 +40,61 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
     return "rate_limit" in str(exc).lower()
 
 
+def skill_matches(expected: str, invoked_skills: set[str]) -> bool:
+    """Check if expected skill matches any invoked skill.
+
+    Handles both prefixed (plugin:skill) and unprefixed (skill) names.
+    """
+    if expected in invoked_skills:
+        return True
+    expected_name = expected.split(":")[-1] if ":" in expected else expected
+    for inv in invoked_skills:
+        inv_name = inv.split(":")[-1] if ":" in inv else inv
+        if expected_name == inv_name:
+            return True
+    return False
+
+
+def _check_pass(skills_invoked: list[str], test: TestCase) -> bool:
+    """Return True if the pass condition is already satisfied by the current invoked list.
+
+    Returns False for tests with no expected skill — those can only be confirmed
+    at the end of the run (pass = nothing was invoked).
+    """
+    if not skills_invoked:
+        return False
+
+    invoked_set = set(skills_invoked)
+
+    if test.expected_skills:
+        # AND: all required skills must have appeared
+        return all(skill_matches(exp, invoked_set) for exp in test.expected_skills)
+    elif test.expected_skill_one_of:
+        # OR: any one of the listed skills is sufficient
+        return any(skill_matches(exp, invoked_set) for exp in test.expected_skill_one_of)
+    elif test.expected_skill:
+        # Single skill match
+        return skill_matches(test.expected_skill, invoked_set)
+    else:
+        # No expected skill — cannot short-circuit, must run to completion
+        return False
+
+
 async def run_prompt_and_collect_skills(
     prompt: str,
-    max_turns: int = 5,
-    model: str | None = None,
+    test: TestCase,
     max_retries: int = 5,
 ) -> tuple[list[str], list[dict], dict]:
-    """Run a prompt via Agent SDK, return (skills_invoked, tool_calls, result_info)."""
+    """Run a prompt via Agent SDK, return (skills_invoked, tool_calls, result_info).
+
+    Stops streaming as soon as the pass condition for `test` is satisfied —
+    i.e., the expected skill(s) have been invoked. The skill's own workflow
+    never executes for passing routing evals.
+
+    For tests with no expected skill, the full conversation runs to completion.
+    """
     logger.debug("Building ClaudeAgentOptions: plugins=%s, max_turns=%d, model=%s, cwd=%s",
-                 REPO_ROOT, max_turns, model, REPO_ROOT)
+                 REPO_ROOT, test.max_turns, test.model, REPO_ROOT)
     stderr_lines: list[str] = []
 
     def capture_stderr(line: str) -> None:
@@ -65,8 +111,8 @@ async def run_prompt_and_collect_skills(
             "append": "Never ask clarifying questions. Invoke skills directly.",
         },
         setting_sources=["project"],
-        max_turns=max_turns,
-        model=model,
+        max_turns=test.max_turns,
+        model=test.model,
         cwd=str(REPO_ROOT),
         stderr=capture_stderr,
     )
@@ -76,9 +122,11 @@ async def run_prompt_and_collect_skills(
             skills_invoked: list[str] = []
             tool_calls: list[dict] = []
             result_info: dict = {}
+            _pass_met = False
 
             logger.debug("Starting query (attempt %d/%d): %.120s",
                          attempt + 1, max_retries + 1, prompt)
+
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, AssistantMessage):
                     for block in message.content:
@@ -91,6 +139,17 @@ async def run_prompt_and_collect_skills(
                                 if skill_name:
                                     skills_invoked.append(skill_name)
                                     logger.debug("Skill invoked: %s", skill_name)
+                                    # Check pass condition inline — stop as soon as it's met
+                                    if _check_pass(skills_invoked, test):
+                                        logger.debug(
+                                            "Pass condition met after invoking '%s' — stopping early",
+                                            skill_name,
+                                        )
+                                        _pass_met = True
+                                        break  # exit inner block loop
+
+                    if _pass_met:
+                        break  # exit outer async-for, closes the generator
 
                 elif isinstance(message, ResultMessage):
                     result_info = {
@@ -105,8 +164,10 @@ async def run_prompt_and_collect_skills(
                                  message.session_id, message.num_turns,
                                  message.total_cost_usd, message.is_error, message.duration_ms)
 
-            logger.debug("Query complete: skills_invoked=%s", skills_invoked)
+            logger.debug("Query complete: skills_invoked=%s early_exit=%s",
+                         skills_invoked, _pass_met)
             result_info["stderr"] = "".join(stderr_lines)
+            result_info["early_exit"] = _pass_met
             return skills_invoked, tool_calls, result_info
 
         except Exception as exc:
@@ -123,16 +184,17 @@ async def run_prompt_and_collect_skills(
     raise RuntimeError("Exhausted retries")
 
 
-async def run_test(test: TestCase, timeout: int = 180, max_retries: int = 5) -> TestResult:
+async def run_test(test: TestCase, timeout: int = 30, max_retries: int = 5) -> TestResult:
     """Run a single test case and return result."""
     logger.debug("[%s] Starting test: prompt=%.120s", test.name, test.prompt)
+
+    result_info: dict = {}
 
     try:
         skills_invoked, tool_calls, result_info = await asyncio.wait_for(
             run_prompt_and_collect_skills(
                 test.prompt,
-                max_turns=test.max_turns,
-                model=test.model,
+                test=test,
                 max_retries=max_retries,
             ),
             timeout=timeout,
@@ -143,6 +205,7 @@ async def run_test(test: TestCase, timeout: int = 180, max_retries: int = 5) -> 
         logger.debug("[%s] Is error: %s", test.name, result_info.get("is_error", "N/A"))
         logger.debug("[%s] Cost: $%.4f", test.name, result_info.get("total_cost_usd") or 0)
         logger.debug("[%s] Duration: %sms", test.name, result_info.get("duration_ms", "N/A"))
+        logger.debug("[%s] Early exit: %s", test.name, result_info.get("early_exit", False))
 
         result_text = result_info.get("result", "")
         if result_text:
@@ -184,21 +247,8 @@ async def run_test(test: TestCase, timeout: int = 180, max_retries: int = 5) -> 
             error=error_msg,
         )
 
-    def skill_matches(expected: str, invoked_skills: set[str]) -> bool:
-        """Check if expected skill matches any invoked skill.
-
-        Handles both prefixed (plugin:skill) and unprefixed (skill) names.
-        """
-        if expected in invoked_skills:
-            return True
-        expected_name = expected.split(":")[-1] if ":" in expected else expected
-        for inv in invoked_skills:
-            inv_name = inv.split(":")[-1] if ":" in inv else inv
-            if expected_name == inv_name:
-                return True
-        return False
-
-    # Evaluate result
+    # Evaluate result — early exit means pass condition was already confirmed inline;
+    # we still compute passed here for consistency (it will always be True on early exit).
     if test.expected_skills:
         passed = all(skill_matches(exp, invoked_set) for exp in test.expected_skills)
         expected = f"all of {test.expected_skills}"
@@ -306,8 +356,8 @@ def main():
         epilog="""
 Examples:
   skill-evals                              Run default test cases
-  skill-evals test-cases/edge-cases.yaml   Run specific test file
-  skill-evals --timeout 120                Run with longer timeout
+  skill-evals test-cases/all.yaml          Run specific test file
+  skill-evals --timeout 60                 Run with custom timeout
   skill-evals -j 15                        Run 15 tests in parallel
   skill-evals -f update-skills             Run only matching tests
   skill-evals --threshold 80               Pass if >= 80% of tests pass
@@ -316,14 +366,14 @@ Examples:
     parser.add_argument(
         "test_file",
         nargs="?",
-        default="test-cases/skill-routing.yaml",
-        help="Path to test case YAML file (default: test-cases/skill-routing.yaml)",
+        default="test-cases/all.yaml",
+        help="Path to test case YAML file (default: test-cases/all.yaml)",
     )
     parser.add_argument(
         "--timeout",
         type=int,
-        default=180,
-        help="Timeout in seconds for each test (default: 180)",
+        default=30,
+        help="Timeout in seconds for each test (default: 30 — passing tests exit after one turn)",
     )
     parser.add_argument(
         "--verbose",
