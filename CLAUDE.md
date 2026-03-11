@@ -76,10 +76,12 @@ docs/
 
 The pipeline:
 1. **Stage** — scaffolds the skill in `.claude/skills/staging/<skill-name>/` (gitignored, never distributed)
-2. **Eval Loop** — helps write `evals/evals.json`, runs routing evals, iterates on the description until all entries pass
-3. **Promote** — moves to target plugin, runs `validate-skill.sh`, regenerates routing YAMLs, bumps versions
+2. **Skill Quality Evals** — writes `evals/evals.json`, runs Anthropic's skill-creator description optimizer (`run_loop.py`), iterates until description triggers correctly
+3. **Promote** — moves to target plugin, runs `validate-skill.sh`, regenerates routing YAMLs, runs marketplace routing evals, bumps versions
 
 > **Advanced / migration only:** Manual scaffolding directly into `plugins/*/skills/` is reserved for migrating skills that predate this workflow. For new skills, always use `/build-skill`.
+
+> **Important:** The `skill-creator` skill (Anthropic's built-in) must NOT be invoked directly for this marketplace. Always use `/build-skill` first — it wraps `skill-creator` with the repo's Stage → Eval Loop → Promote pipeline. Invoking `skill-creator` on its own bypasses eval requirements and plugin structure conventions.
 
 ## Adding a Plugin
 
@@ -119,7 +121,12 @@ claude plugin install icerhymers-databricks-mcp@icerhymers-marketplace
 
 ## Eval Requirements
 
-Every skill **must** include `evals/evals.json` alongside its `SKILL.md`. This is the single source of truth for routing tests and description quality.
+Every skill **must** include `evals/evals.json` alongside its `SKILL.md`. This file serves as input to **two distinct eval systems**:
+
+| System | Purpose | When | Tooling |
+|--------|---------|------|---------|
+| **Skill-creator evals** | Validate description triggering + quality | Phase 2 (before promotion) | `run_loop.py`, `run_eval.py`, grader agent |
+| **Routing evals** | Validate marketplace-wide routing correctness | After promotion + CI/CD | `generate-routing-tests.py`, `skill-evals` runner |
 
 **Format** (identical to Anthropic's skill-creator):
 ```json
@@ -135,13 +142,23 @@ Every skill **must** include `evals/evals.json` alongside its `SKILL.md`. This i
 
 PRs that add or modify skills without a valid `evals/evals.json` should not be merged.
 
-After adding or modifying any `evals/evals.json`, regenerate and commit routing YAMLs:
+### Skill-creator evals (Phase 2 — pre-promotion)
 
+Run during `/build-skill` Phase 2 to optimize the skill's description:
+```bash
+cd .claude/skills/skill-creator && python3 -m scripts.run_loop \
+  --eval-set <path-to-evals.json> --skill-path <path-to-skill> \
+  --model claude-sonnet-4-5 --max-iterations 5 --holdout 0.4 --verbose
+```
+
+### Routing evals (Phase 3 — post-promotion)
+
+After adding or modifying any `evals/evals.json`, regenerate and commit routing YAMLs:
 ```bash
 make evals-generate
 ```
 
-Run evals locally:
+Run routing evals locally:
 ```bash
 make evals                          # full catalog
 make evals PLUGIN=databricks-skills # one plugin only

@@ -75,9 +75,9 @@ Then fill in the SKILL.md:
 
 ---
 
-## Phase 2: Eval Loop
+## Phase 2: Skill Quality Evals
 
-The eval loop validates that the skill's `description` in the SKILL.md frontmatter correctly routes real user prompts. You iterate here until all evals pass before promotion.
+Phase 2 uses **Anthropic's skill-creator eval tooling** to validate that the skill's description triggers correctly. This is a _skill authoring_ concern — it answers "does this description work?" Marketplace-wide routing evals happen later in Phase 3 after promotion.
 
 ### Step 1: Create evals/evals.json
 
@@ -94,43 +94,53 @@ Create `.claude/skills/staging/<skill-name>/evals/evals.json`:
 
 **Rules:**
 - Minimum **2** `should_trigger: true` entries — use real prompts, NOT the skill name
-- Minimum **2** `should_trigger: false` entries — include at least one that is plausibly close
+- Minimum **2** `should_trigger: false` entries — include at least one **near-miss** (plausibly close but wrong)
+- Positive queries should be **substantive** (multi-step, complex, realistic) — not trivial one-liners
 - This format is identical to Anthropic's skill-creator `evals/evals.json` — compatible by design
 
 **⛔ Gate 2**: Do NOT run evals until at least 2 true + 2 false entries exist.
 
-### Step 2: Run the Eval Loop
+### Step 2: Single-Pass Routing Check (required gate)
 
-Test the skill's description against the eval entries:
+Run a single pass of `run_eval.py` to verify the skill's description triggers correctly:
 
 ```bash
-# Generate test YAML from the staging skill
-python3 evals/scripts/generate-routing-tests.py \
-    --plugins-dir .claude/skills/staging \
-    --out-dir /tmp/staging-evals/
-# Run evals against it
-cd evals && uv run skill-evals -f /tmp/staging-evals/<skill-name>.yaml -v
+REPO_ROOT=<repo-root> && cd "$REPO_ROOT/.claude/skills/skill-creator" && python3 -m scripts.run_eval \
+  --eval-set "$REPO_ROOT/.claude/skills/staging/<skill-name>/evals/evals.json" \
+  --skill-path "$REPO_ROOT/.claude/skills/staging/<skill-name>" \
+  --model claude-sonnet-4-5 \
+  --runs-per-query 1 \
+  --verbose
 ```
 
-### Step 3: Interpret Results and Iterate
+> **Important**: Must run from the `skill-creator/` directory since scripts use `from scripts.X import` relative imports. Set `REPO_ROOT` to the repo root. For a 9-query eval set, this is ~9 parallel `claude -p` calls (~1–2 minutes).
 
-**If `should_trigger: true` entries fail** — the description is too narrow. The router isn't activating the skill for prompts it should catch. Fix: incorporate keywords from the failing queries into the `description` field.
+What this does: runs each query **once** against `claude -p` and reports whether the skill triggered. No iteration, no optimization — just pass/fail per query.
 
-**If `should_trigger: false` entries fail** — the description is too broad. The router is activating the skill for unrelated prompts. Fix: add "use when" scoping language that excludes the false cases.
+**⛔ Gate 3**: All (or nearly all) queries must pass. If multiple entries fail, revise the description and re-run before proceeding.
 
-Repeat until all entries pass.
+### Step 3: Optional Advanced Eval Tools
 
-### Override (escape hatch)
+After Gate 3 passes, present the optional eval menu:
 
-If a contributor explicitly says **"promote anyway"** or **"skip evals"** and confirms when asked:
+```
+Single-pass routing check passed. Optional advanced eval tools (token-intensive, default skip):
 
-1. Add a warning to the staged SKILL.md frontmatter:
-   ```yaml
-   # WARN: promoted with failing evals — review routing before merge
-   ```
-2. Proceed to Phase 3 with the warning in place
+  [D] Description Optimization — run_loop.py iterates up to 5× with 3 runs/query
+      ⚠ ~135 claude -p calls for a 9-query eval set
+  [B] Benchmarking — with-skill vs without-skill quantitative comparison
+  [A] AB Testing — blind comparison of two skill versions
+  [S] Skip (default) — proceed to promotion
 
-**⛔ Gate 3**: Do NOT promote without either all evals passing OR explicit "promote anyway" confirmation with warning written.
+Choose [D/B/A/S, default S]:
+```
+
+- If user selects **D**, run `run_loop.py` with `--results-dir` so results persist to disk. If the optimized description differs from the original, **update the SKILL.md frontmatter** `description` field with the optimized version.
+- **Benchmarking**: Full quantitative eval using the grader + analyzer agents, comparing with-skill vs baseline outputs, generating `benchmark.json`
+- **AB Testing**: Blind comparator agent judges two skill versions (useful when iterating on an existing skill)
+- Default is **S** — no prompt confirmation needed, just proceed.
+
+> **Eval quality tip:** Regardless of which option you choose, ensure `evals.json` has near-miss negatives and realistic positive queries — not just keyword matches.
 
 ---
 
@@ -171,15 +181,15 @@ bash scripts/validate-skill.sh plugins/<plugin>/skills/<skill-name>
 make evals-generate
 ```
 
-This updates `evals/test-cases/<plugin-name>.yaml` and `evals/test-cases/all.yaml` to include the promoted skill.
+This updates `evals/test-cases/<plugin-name>.yaml` and `evals/test-cases/all.yaml` to include the promoted skill. These are **marketplace routing evals** — a different system from the skill-creator description optimization in Phase 2. Routing evals test whether the new skill's description correctly routes among _all_ skills in the catalog.
 
-### Step 5: Run Plugin-Scoped Evals
+### Step 5: Run Plugin-Scoped Routing Evals
 
 ```bash
 make evals PLUGIN=<plugin>
 ```
 
-**⛔ Gate 5**: Confirm the promoted skill passes in the context of the full plugin catalog. If another skill's evals now fail, investigate cross-skill description conflicts before merging.
+**⛔ Gate 5**: Confirm the promoted skill passes in the context of the full plugin catalog. If another skill's evals now fail, investigate cross-skill description conflicts before merging. These routing evals catch conflicts that the Phase 2 skill-level evals cannot — they test the skill in the marketplace context, not in isolation.
 
 ### Step 6: Version Bump
 
@@ -224,7 +234,8 @@ If no existing plugin fits:
 - [ ] Skill scaffolded in `.claude/skills/staging/<skill-name>/`
 - [ ] SKILL.md has `name`, `description`, workflow content
 - [ ] `evals/evals.json` has ≥2 `true` + ≥2 `false` entries
-- [ ] All evals pass (or "promote anyway" override with warning committed)
+- [ ] Single-pass routing check passes (`run_eval.py --runs-per-query 1`)
+- [ ] (Optional) Advanced eval tools run — description optimization, benchmarking, AB testing
 - [ ] Target plugin chosen
 - [ ] Skill moved from staging to `plugins/<plugin>/skills/<skill-name>/`
 - [ ] `validate-skill.sh` passes with no errors
