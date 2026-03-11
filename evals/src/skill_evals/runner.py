@@ -431,7 +431,23 @@ Examples:
             print(f"No tests match filter: {args.filter}")
             sys.exit(1)
 
-    asyncio.run(run_and_report(tests, args))
+    loop = asyncio.new_event_loop()
+
+    def _exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+        exc = context.get("exception")
+        # Suppress the benign RuntimeError thrown by anyio when we break out of
+        # the SDK's async generator early (early-exit optimisation).  The error
+        # occurs because anyio's cancel scope is exited from a different task
+        # than the one that entered it, but tests still pass correctly.
+        if isinstance(exc, RuntimeError) and "cancel scope" in str(exc):
+            return
+        loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_exception_handler)
+    try:
+        loop.run_until_complete(run_and_report(tests, args))
+    finally:
+        loop.close()
 
 
 if __name__ == "__main__":
