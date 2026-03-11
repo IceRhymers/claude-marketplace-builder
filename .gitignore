@@ -15,5 +15,6 @@ config/inference.env
 evals/.venv/
 
 .claude/worktrees/
+.claude/skills/staging/
 .mcp.json
 .coverage

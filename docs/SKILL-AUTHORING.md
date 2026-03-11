@@ -185,6 +185,55 @@ cp -r templates/advanced-skill/ plugins/<plugin>/skills/my-skill/
 mv plugins/<plugin>/skills/my-skill/SKILL.md.template plugins/<plugin>/skills/my-skill/SKILL.md
 ```
 
+## Evals
+
+Every skill **must** include an `evals/evals.json` file alongside its `SKILL.md`. This file is the single source of truth for:
+
+1. **Routing tests** — verifying natural language prompts correctly activate your skill
+2. **Description optimization** — negative examples (`should_trigger: false`) power future description-refinement tooling compatible with Anthropic's skill-creator
+
+### Format
+
+```json
+[
+  {"query": "A prompt that should activate this skill", "should_trigger": true},
+  {"query": "Another positive example", "should_trigger": true},
+  {"query": "An unrelated prompt that should NOT activate this skill", "should_trigger": false},
+  {"query": "Another negative example", "should_trigger": false}
+]
+```
+
+**Minimum requirements:**
+- At least **2** `should_trigger: true` entries
+- At least **2** `should_trigger: false` entries
+- Use natural language prompts a real user would type — not prompts that mention the skill name
+
+This format is identical to Anthropic's skill-creator `evals/evals.json` — if you use skill-creator's optimization loop locally, its output can be committed directly.
+
+### Generating Routing YAMLs
+
+After adding or modifying any `evals/evals.json`, regenerate the routing test YAMLs:
+
+```bash
+make evals-generate
+```
+
+This produces:
+- `evals/test-cases/<plugin-name>.yaml` — per-plugin test cases
+- `evals/test-cases/all.yaml` — full catalog (used by CI)
+
+**Commit the generated YAMLs** — CI validates they are current with `make evals-check-generated`.
+
+### Running Evals
+
+```bash
+# Full catalog (all plugins)
+make evals
+
+# Scoped to one plugin only
+make evals PLUGIN=databricks-skills
+```
+
 ## Testing Your Skill
 
 1. Validate structure: `bash scripts/validate-skill.sh plugins/<plugin>/skills/my-skill`

@@ -1,0 +1,7 @@
+[
+  {"query": "My MCP tools aren't showing up in Claude Code, can you help me verify my Databricks auth is configured correctly?", "should_trigger": true},
+  {"query": "MCP proxy isn't working when I try to use Slack tools", "should_trigger": true},
+  {"query": "How do I connect MCP to our Genie space in Databricks?", "should_trigger": true},
+  {"query": "Trace the upstream lineage for main.sales.orders", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

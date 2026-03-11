@@ -1,0 +1,7 @@
+[
+  {"query": "List all notebooks in the /Repos/team/etl-pipeline directory in our Databricks workspace", "should_trigger": true},
+  {"query": "Pull the SQL file at /Workspace/Shared/analytics/daily_metrics.sql from Databricks so I can review it", "should_trigger": true},
+  {"query": "Show me all Python scripts under /Repos/data-engineering/transformations", "should_trigger": true},
+  {"query": "Trace the upstream lineage for main.sales.orders", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

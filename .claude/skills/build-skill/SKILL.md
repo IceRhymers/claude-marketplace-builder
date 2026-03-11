@@ -1,61 +1,154 @@
 ---
 name: build-skill
 description: >
-  Create new skills and plugins for this marketplace repo. Use when the user wants to add a skill
-  to an existing plugin, create a new plugin group, or scaffold skill structure from templates.
+  Create new skills and plugins for this marketplace repo. Runs the full
+  Stage → Eval Loop → Promote pipeline end-to-end. Use when a contributor
+  wants to add a skill to an existing plugin or create a new plugin group.
   This is a repo-scoped authoring tool — it is NOT distributed to end users.
 user-invocable: true
 ---
 
-# Build Skill
+# Build Skill — Stage → Eval Loop → Promote
 
-You are a skill authoring assistant for this marketplace repository. You help authors create high-quality skills using a validation-first approach: manually execute the workflow before codifying it.
-
-## Repo Layout
+You are a skill authoring assistant for this marketplace repository. You run a **gated three-phase pipeline** that takes a skill from idea to a properly tested, promoted skill in the right plugin. **All new skills must go through this pipeline** — no direct scaffolding into `plugins/`.
 
 ```
-plugins/
-  databricks-skills/                Databricks workflow skills (databricks-workspace-files, databricks-lineage)
-  internal-skills/                  Internal workflow & productivity skills (onboarding, incident-response)
-  marketplace-management/           Marketplace self-management skills (update-skills)
-  specialized-tools/                Specialized utility tools (lucid-diagram)
-  <plugin-name>/
-    .claude-plugin/plugin.json      Plugin manifest
-    skills/
-      <skill-name>/SKILL.md         Skill definitions
-    commands/                        Slash commands (optional)
-.claude-plugin/marketplace.json     Marketplace catalog (references all plugins)
-templates/                          Scaffolding templates (basic-skill, advanced-skill)
-scripts/
-  validate-skill.sh                 Validation script
-  install.sh                        End-user install/update script
-  init.sh                           One-time repo setup (placeholder replacement)
+Phase 1: Requirements    →    Phase 2: Eval Loop    →    Phase 3: Promote
+  (gather + stage)              (test + iterate)           (move + validate)
 ```
 
-## Phase 1: Requirements Gathering
+You do not advance to the next phase until the gate conditions of the current one are met.
 
-### Step 1: Understand the Skill Purpose
+---
 
-Ask the user:
+## Phase 1: Requirements & Stage
 
-1. **What problem does this skill solve?** - The specific task or workflow it automates
-2. **When should it be triggered?** - Natural language prompts that should invoke this skill
-3. **Is it user-invocable?** - Should users be able to call it with `/skill-name`?
-4. **What tools does it need?** - Which Claude Code tools? (Read, Grep, Glob, Bash, Write, Edit, WebFetch, WebSearch, etc.)
+### Step 1: Requirements Gathering
 
-### Step 2: Determine Output Requirements
+Ask the contributor:
 
-Ask the user:
+1. **What problem does this skill solve?** — the specific task or workflow it automates
+2. **When should it be triggered?** — give me 2–3 example prompts a user would naturally say to invoke it
+3. **Is it user-invocable?** — should the user be able to call it with `/skill-name`?
+4. **What tools does it need?** — Read, Grep, Glob, Bash, Write, Edit, WebFetch, WebSearch, etc.
+5. **Basic or advanced?** — does it need helper scripts or reference docs? (basic = SKILL.md only)
 
-1. **Does this skill produce output?** (file, document, code, etc.)
-2. **If yes, can you provide 1-2 examples of ideal output?**
-   - Get concrete examples, not just descriptions
-   - These become the validation target
-3. **What format should the output be in?**
+**Do NOT ask which plugin yet.** Plugin assignment happens at promotion time after evals pass.
 
-### Step 3: Choose Plugin and Template
+### Step 2: Manual Workflow Validation (if applicable)
 
-**Which plugin?** Current plugins:
+Before writing any skill content, **manually execute the core workflow** to validate assumptions:
+
+1. Write out the intended step-by-step workflow
+2. Actually run each step — make the calls, read the files, produce the output
+3. Note failures, edge cases, prerequisites
+4. Only proceed after the manual execution succeeds
+
+Skip this step only for pure knowledge/template skills with no executable workflow.
+
+### Step 3: Scaffold to Staging
+
+**CRITICAL**: Scaffold into `.claude/skills/staging/<skill-name>/`, never directly into `plugins/`.
+
+```bash
+# Basic skill (knowledge/guidance only):
+cp -r templates/basic-skill/ .claude/skills/staging/<skill-name>/
+mv .claude/skills/staging/<skill-name>/SKILL.md.template .claude/skills/staging/<skill-name>/SKILL.md
+
+# Advanced skill (with scripts/references):
+cp -r templates/advanced-skill/ .claude/skills/staging/<skill-name>/
+mv .claude/skills/staging/<skill-name>/SKILL.md.template .claude/skills/staging/<skill-name>/SKILL.md
+```
+
+Then fill in the SKILL.md:
+
+1. **Frontmatter**: Set `name`, `description`, `user-invocable`, `allowed-tools`
+2. **Overview**: What the skill does and when to use it
+3. **Prerequisites**: What must be set up before using it
+4. **Workflow**: The validated steps from above
+5. **Error Handling**: Known failure modes
+
+**⛔ Gate 1**: Do NOT advance to the Eval Loop until the SKILL.md has:
+- A `name` field matching the directory name
+- A `description` field (this is what the router uses — write it carefully)
+- At least a minimal workflow section
+
+---
+
+## Phase 2: Skill Quality Evals
+
+Phase 2 uses **Anthropic's skill-creator eval tooling** to validate that the skill's description triggers correctly. This is a _skill authoring_ concern — it answers "does this description work?" Marketplace-wide routing evals happen later in Phase 3 after promotion.
+
+### Step 1: Create evals/evals.json
+
+Create `.claude/skills/staging/<skill-name>/evals/evals.json`:
+
+```json
+[
+  {"query": "A natural language prompt that should activate this skill", "should_trigger": true},
+  {"query": "Another phrasing a user would say to trigger this skill", "should_trigger": true},
+  {"query": "A prompt that looks related but should NOT activate this skill", "should_trigger": false},
+  {"query": "An unrelated prompt that should definitely NOT activate this skill", "should_trigger": false}
+]
+```
+
+**Rules:**
+- Minimum **2** `should_trigger: true` entries — use real prompts, NOT the skill name
+- Minimum **2** `should_trigger: false` entries — include at least one **near-miss** (plausibly close but wrong)
+- Positive queries should be **substantive** (multi-step, complex, realistic) — not trivial one-liners
+- This format is identical to Anthropic's skill-creator `evals/evals.json` — compatible by design
+
+**⛔ Gate 2**: Do NOT run evals until at least 2 true + 2 false entries exist.
+
+### Step 2: Single-Pass Routing Check (required gate)
+
+Run a single pass of `run_eval.py` to verify the skill's description triggers correctly:
+
+```bash
+REPO_ROOT=<repo-root> && cd "$REPO_ROOT/.claude/skills/skill-creator" && python3 -m scripts.run_eval \
+  --eval-set "$REPO_ROOT/.claude/skills/staging/<skill-name>/evals/evals.json" \
+  --skill-path "$REPO_ROOT/.claude/skills/staging/<skill-name>" \
+  --model claude-sonnet-4-5 \
+  --runs-per-query 1 \
+  --verbose
+```
+
+> **Important**: Must run from the `skill-creator/` directory since scripts use `from scripts.X import` relative imports. Set `REPO_ROOT` to the repo root. For a 9-query eval set, this is ~9 parallel `claude -p` calls (~1–2 minutes).
+
+What this does: runs each query **once** against `claude -p` and reports whether the skill triggered. No iteration, no optimization — just pass/fail per query.
+
+**⛔ Gate 3**: All (or nearly all) queries must pass. If multiple entries fail, revise the description and re-run before proceeding.
+
+### Step 3: Optional Advanced Eval Tools
+
+After Gate 3 passes, present the optional eval menu:
+
+```
+Single-pass routing check passed. Optional advanced eval tools (token-intensive, default skip):
+
+  [D] Description Optimization — run_loop.py iterates up to 5× with 3 runs/query
+      ⚠ ~135 claude -p calls for a 9-query eval set
+  [B] Benchmarking — with-skill vs without-skill quantitative comparison
+  [A] AB Testing — blind comparison of two skill versions
+  [S] Skip (default) — proceed to promotion
+
+Choose [D/B/A/S, default S]:
+```
+
+- If user selects **D**, run `run_loop.py` with `--results-dir` so results persist to disk. If the optimized description differs from the original, **update the SKILL.md frontmatter** `description` field with the optimized version.
+- **Benchmarking**: Full quantitative eval using the grader + analyzer agents, comparing with-skill vs baseline outputs, generating `benchmark.json`
+- **AB Testing**: Blind comparator agent judges two skill versions (useful when iterating on an existing skill)
+- Default is **S** — no prompt confirmation needed, just proceed.
+
+> **Eval quality tip:** Regardless of which option you choose, ensure `evals.json` has near-miss negatives and realistic positive queries — not just keyword matches.
+
+---
+
+## Phase 3: Promote
+
+### Step 1: Choose Target Plugin
+
+Now ask the contributor which plugin the skill belongs to:
 
 | Plugin | Category | Skills |
 |--------|----------|--------|
@@ -63,265 +156,114 @@ Ask the user:
 | `internal-skills` | enterprise | onboarding, incident-response |
 | `marketplace-management` | marketplace | update-skills |
 | `specialized-tools` | utilities | lucid-diagram |
+| `databricks-mcp` | mcp | mcp-setup |
+| `budget-checker` | governance | budget-setup |
 
 If none fit, create a new plugin (see "Creating a New Plugin" below).
 
-**Which template?**
-
-| Template | Use For |
-|----------|---------|
-| `basic-skill` | Knowledge/guidance only — no scripts or reference files |
-| `advanced-skill` | Includes helper scripts, reference docs, or both |
-
-## Phase 2: Manual Workflow Validation
-
-**CRITICAL**: Before writing ANY skill code, manually execute the workflow to validate assumptions.
-
-### Step 1: Document the Intended Workflow
-
-Write out the step-by-step process the skill would follow:
-
-```
-Intended Workflow:
-1. [Step 1 description]
-2. [Step 2 description]
-...
-```
-
-### Step 2: Execute the Workflow Manually
-
-Actually perform each step yourself:
-
-- Run the commands
-- Make the API calls
-- Create the outputs
-- Note any failures, edge cases, or surprises
-
-### Step 3: Validate Output (if applicable)
-
-If the user provided example output:
-
-1. Compare your manual output to the example
-2. Identify gaps or differences
-3. Iterate until your output matches the quality/format of the example
-
-### Step 4: Document Learnings
-
-```
-Workflow Validation Results:
-- Steps that worked as expected: [list]
-- Steps that required adjustment: [list with details]
-- Edge cases discovered: [list]
-- Prerequisites not initially identified: [list]
-- Final working workflow: [revised steps]
-```
-
-**Only proceed to Phase 3 after the manual workflow succeeds.**
-
-## Phase 3: Build the Skill
-
-### Step 1: Scaffold from Template
+### Step 2: Move from Staging to Plugin
 
 ```bash
-# Basic skill (knowledge/guidance only):
-cp -r templates/basic-skill/ plugins/<plugin>/skills/<skill-name>/
-mv plugins/<plugin>/skills/<skill-name>/SKILL.md.template plugins/<plugin>/skills/<skill-name>/SKILL.md
-
-# Advanced skill (with scripts/references):
-cp -r templates/advanced-skill/ plugins/<plugin>/skills/<skill-name>/
-mv plugins/<plugin>/skills/<skill-name>/SKILL.md.template plugins/<plugin>/skills/<skill-name>/SKILL.md
+mv .claude/skills/staging/<skill-name>/ plugins/<plugin>/skills/<skill-name>/
 ```
 
-### Step 2: Fill In the Skill
-
-Edit the SKILL.md:
-
-1. **Frontmatter**: Set `name`, `description`, `user-invocable`, and any other fields
-2. **Overview**: What the skill does and when to use it
-3. **Prerequisites**: What must be set up before using the skill
-4. **Workflow**: The validated steps from Phase 2
-5. **Common Patterns**: Typical usage scenarios
-6. **Error Handling**: Known failure modes and solutions
-
-If the skill has helper scripts, add them to `scripts/` and reference them in SKILL.md.
-If the skill has reference docs, add them to `references/` and describe them in SKILL.md.
-
-### Step 3: Validate
+### Step 3: Run validate-skill.sh
 
 ```bash
 bash scripts/validate-skill.sh plugins/<plugin>/skills/<skill-name>
 ```
 
-### Step 4: Version Bump
+**⛔ Gate 4**: Do NOT proceed if `validate-skill.sh` exits non-zero. Fix errors first.
+
+### Step 4: Regenerate Routing YAMLs
+
+```bash
+make evals-generate
+```
+
+This updates `evals/test-cases/<plugin-name>.yaml` and `evals/test-cases/all.yaml` to include the promoted skill. These are **marketplace routing evals** — a different system from the skill-creator description optimization in Phase 2. Routing evals test whether the new skill's description correctly routes among _all_ skills in the catalog.
+
+### Step 5: Run Plugin-Scoped Routing Evals
+
+```bash
+make evals PLUGIN=<plugin>
+```
+
+**⛔ Gate 5**: Confirm the promoted skill passes in the context of the full plugin catalog. If another skill's evals now fail, investigate cross-skill description conflicts before merging. These routing evals catch conflicts that the Phase 2 skill-level evals cannot — they test the skill in the marketplace context, not in isolation.
+
+### Step 6: Version Bump
 
 Update the version in:
 - `plugins/<plugin>/.claude-plugin/plugin.json`
 - `.claude-plugin/marketplace.json` (the matching plugin entry)
 
-## Phase 4: Add Eval Test Cases
+### Step 7: Commit
 
-**Every skill must have at least 1 test case** in `evals/test-cases/skill-routing.yaml`. This is required — PRs without eval coverage should not be merged.
+Stage and commit all changes:
+- `plugins/<plugin>/skills/<skill-name>/` (SKILL.md, scripts/, references/, evals/evals.json)
+- `evals/test-cases/<plugin-name>.yaml` (updated)
+- `evals/test-cases/all.yaml` (updated)
+- `plugins/<plugin>/.claude-plugin/plugin.json` (version bump)
+- `.claude-plugin/marketplace.json` (version bump)
 
-### Step 1: Write Test Cases
-
-Add entries to `evals/test-cases/skill-routing.yaml`:
-
-```yaml
-# --- <skill-name> ---
-- name: <skill-name>-<scenario>
-  prompt: "A natural language prompt that should trigger this skill"
-  expected_skill: <skill-name>
-```
-
-Guidelines:
-- Use the skill's `name` from its SKILL.md frontmatter as `expected_skill`
-- Write prompts that a real user would say — not prompts that mention the skill name
-- Add at least 1 test case; 2 is recommended to cover different phrasings
-- Use `expected_skills` (list) for AND logic, `expected_skill_one_of` (list) for OR logic
-
-### Step 2: Run Evals
-
-```bash
-cd evals && uv run skill-evals -v --filter <skill-name>
-```
-
-Verify the test passes before proceeding.
-
-## Phase 5: Test the Skill
-
-Register the marketplace locally and install the plugin:
-
-```bash
-claude plugin marketplace add .
-claude plugin install <org-slug>-<plugin>@<org-slug>-marketplace
-```
-
-Then test:
-- If user-invocable, test with `/<skill-name>`
-- Otherwise, use natural language that should trigger it
-- Verify each workflow step executes correctly
+---
 
 ## Creating a New Plugin
 
-If no existing plugin fits, create a new one:
+If no existing plugin fits:
 
-1. Create the directory structure:
+1. Create directory structure:
    ```bash
    mkdir -p plugins/<new-plugin>/.claude-plugin plugins/<new-plugin>/skills plugins/<new-plugin>/commands
    ```
 
-2. Create the plugin manifest at `plugins/<new-plugin>/.claude-plugin/plugin.json`:
-   ```json
-   {
-     "name": "<org-slug>-<new-plugin>",
-     "description": "<description of this plugin group>",
-     "version": "1.0.0",
-     "author": { "name": "<team-name>" },
-     "skills": "./skills/",
-     "commands": "./commands/"
-   }
-   ```
-   Use the org slug from an existing plugin.json as reference.
+2. Create `plugins/<new-plugin>/.claude-plugin/plugin.json` (copy from an existing plugin, update fields)
 
-3. **Register the plugin in `.claude-plugin/marketplace.json`** — This is critical.
-   `scripts/install.sh` dynamically reads this file to discover and install all plugins.
-   If the plugin is not listed here, end users will never receive it.
+3. **Register in `.claude-plugin/marketplace.json`** — critical; without this, end users never receive the plugin
 
-   Add an entry to the `plugins` array:
-   ```json
-   {
-     "name": "<org-slug>-<new-plugin>",
-     "source": "./plugins/<new-plugin>",
-     "description": "Description of what this plugin provides",
-     "version": "1.0.0",
-     "author": { "name": "<team-name>" },
-     "category": "<category>"
-   }
-   ```
-   Use an existing entry in `marketplace.json` as reference for the org slug and team name.
+4. Add to the `PLUGINS` list in `Makefile`
 
-4. **Add files to `scripts/init.sh`** — Any new files that contain `{{ORG_SLUG}}`, `{{ORG_NAME}}`,
-   or other placeholders must be added to the `FILES_TO_REPLACE` array in `scripts/init.sh`.
-   This ensures the one-time init script replaces placeholders when the repo is first forked.
+5. Add any files with `{{ORG_SLUG}}` placeholders to `FILES_TO_REPLACE` in `scripts/init.sh`
 
-5. Then scaffold skills into it using the steps above.
-
-## Skill File Structure Reference
-
-```
-my-skill/
-├── SKILL.md           # Main instructions (required)
-├── scripts/
-│   └── helper.py      # Script Claude can execute (optional)
-└── references/
-    └── guide.md       # Reference data loaded on demand (optional)
-```
-
-Keep `SKILL.md` under 500 lines. Move detailed reference material to separate files.
-
-### YAML Frontmatter
-
-```yaml
 ---
-name: my-skill                     # kebab-case, max 64 chars
-description: What this does        # RECOMMENDED — Claude uses this for auto-activation
-user-invocable: true               # false = hidden from / menu
-allowed-tools: Read, Grep, Bash    # Tools allowed without confirmation
-model: opus                        # opus/sonnet/haiku
+
+## Pipeline Completion Checklist
+
+- [ ] Requirements gathered (purpose, triggers, output examples if applicable)
+- [ ] Workflow manually validated (if executable)
+- [ ] Skill scaffolded in `.claude/skills/staging/<skill-name>/`
+- [ ] SKILL.md has `name`, `description`, workflow content
+- [ ] `evals/evals.json` has ≥2 `true` + ≥2 `false` entries
+- [ ] Single-pass routing check passes (`run_eval.py --runs-per-query 1`)
+- [ ] (Optional) Advanced eval tools run — description optimization, benchmarking, AB testing
+- [ ] Target plugin chosen
+- [ ] Skill moved from staging to `plugins/<plugin>/skills/<skill-name>/`
+- [ ] `validate-skill.sh` passes with no errors
+- [ ] `make evals-generate` run — routing YAMLs updated
+- [ ] `make evals PLUGIN=<plugin>` passes
+- [ ] Version bumped in `plugin.json` and `marketplace.json`
+- [ ] All changes committed
+
 ---
-```
-
-### String Substitutions
-
-| Variable | Description |
-|----------|-------------|
-| `$ARGUMENTS` | All arguments passed when invoking |
-| `$0`, `$1` | Positional arguments |
-
-### Dynamic Context Injection
-
-`` (!)`command` `` runs shell commands before skill content is sent to Claude:
-
-```markdown
-- Current branch: !`git branch --show-current`
-```
-
-## Checklist
-
-- [ ] Requirements gathered (purpose, triggers, output examples)
-- [ ] Target plugin chosen (or new plugin created)
-- [ ] Template chosen (basic or advanced)
-- [ ] Workflow documented
-- [ ] **Workflow manually validated**
-- [ ] Output matches provided examples (if applicable)
-- [ ] Skill scaffolded from template
-- [ ] SKILL.md filled in with validated workflow
-- [ ] `scripts/validate-skill.sh` passes
-- [ ] **At least 1 eval test case added** to `evals/test-cases/skill-routing.yaml`
-- [ ] **Eval passes**: `cd evals && uv run skill-evals -v --filter <skill-name>`
-- [ ] Version bumped in plugin.json and marketplace.json
-- [ ] New files with placeholders added to `scripts/init.sh` `FILES_TO_REPLACE`
-- [ ] Skill tested locally
-- [ ] Changes committed
 
 ## Common Mistakes
 
-### Skipping Manual Validation
-- **Problem:** Skill contains untested assumptions that fail in practice
-- **Fix:** Always execute the workflow manually before writing the skill
+### Scaffolding directly into plugins/
+- **Problem:** Bypasses the eval loop — skill may never trigger or break routing for other skills
+- **Fix:** Always use `/build-skill` — it stages in `.claude/skills/staging/` first
 
-### Vague Output Requirements
-- **Problem:** No way to validate if skill produces correct output
-- **Fix:** Get concrete examples upfront; compare against them
+### Description too vague
+- **Problem:** Skill either never triggers or triggers for everything
+- **Fix:** Description MUST say when the skill should AND should NOT be used. Run the eval loop.
 
-### Overly Long SKILL.md
-- **Problem:** Token cost, hard to maintain
-- **Fix:** Keep under 500 lines; use reference files for schemas, examples, helpers
+### No negative examples in evals.json
+- **Problem:** Can't detect over-broad descriptions; description optimizer has no training signal
+- **Fix:** Include at least 2 `should_trigger: false` entries, including one plausibly close case
 
-### No Eval Test Case
-- **Problem:** Skill ships without routing verification; may silently break or never trigger
-- **Fix:** Add at least 1 test case to `evals/test-cases/skill-routing.yaml` and verify it passes
+### Forgetting to run make evals-generate after promotion
+- **Problem:** `all.yaml` is stale — CI will fail with `evals-check-generated`
+- **Fix:** Always run `make evals-generate` immediately after promotion
 
-### Missing "When to Use" in Description
-- **Problem:** Skill doesn't trigger for relevant prompts
-- **Fix:** Description MUST specify when the skill should be invoked
+### Skipping the plugin-scoped eval run
+- **Problem:** New skill description silently conflicts with an existing skill's description
+- **Fix:** Always run `make evals PLUGIN=<plugin>` after promotion to catch cross-skill conflicts

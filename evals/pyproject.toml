@@ -22,4 +22,5 @@ packages = ["src/skill_evals"]
 [tool.uv]
 dev-dependencies = [
     "pytest>=8.0",
+    "pytest-asyncio>=1.3.0",
 ]

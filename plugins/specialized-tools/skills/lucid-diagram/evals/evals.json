@@ -1,0 +1,7 @@
+[
+  {"query": "Create an lucid chart architecture diagram showing our data pipeline from Kafka through Databricks to a Snowflake data warehouse", "should_trigger": true},
+  {"query": "Generate a Graphviz DOT diagram of the data flow between our ingestion layer, bronze, silver, and gold tables", "should_trigger": true},
+  {"query": "Draw a sequence diagram for our user authentication flow", "should_trigger": true},
+  {"query": "List all notebooks in the /Repos/team directory", "should_trigger": false},
+  {"query": "What is the weather today?", "should_trigger": false}
+]

@@ -115,6 +115,43 @@ validate_skill() {
     done
   fi
 
+  # -------------------------------------------------------------------------
+  # Check evals/evals.json (required for routing gate and build-skill pipeline)
+  # -------------------------------------------------------------------------
+
+  local evals_file="${skill_dir}/evals/evals.json"
+
+  if [ ! -f "$evals_file" ]; then
+    warn "missing evals/evals.json in ${skill_dir}/ — run /build-skill to add evals retroactively"
+  else
+    # Check JSON validity
+    if ! python3 -c "import json, sys; json.load(open('${evals_file}'))" 2>/dev/null; then
+      error "Invalid JSON in ${evals_file}"
+    else
+      # Check for at least one should_trigger:true entry
+      local true_count
+      true_count=$(python3 -c "
+import json
+data = json.load(open('${evals_file}'))
+print(sum(1 for e in data if e.get('should_trigger') is True))
+" 2>/dev/null || echo "0")
+      if [ "$true_count" -eq 0 ]; then
+        warn "no should_trigger:true entries in ${evals_file} — at least one positive example required"
+      fi
+
+      # Check for at least one should_trigger:false entry
+      local false_count
+      false_count=$(python3 -c "
+import json
+data = json.load(open('${evals_file}'))
+print(sum(1 for e in data if e.get('should_trigger') is False))
+" 2>/dev/null || echo "0")
+      if [ "$false_count" -eq 0 ]; then
+        warn "no should_trigger:false entries in ${evals_file} — at least one negative example required"
+      fi
+    fi
+  fi
+
   echo "  Done."
   echo ""
 }
