@@ -1,8 +1,0 @@
-streamlit>=1.40
-databricks-sdk>=0.81
-databricks-sql-connector>=3.0
-sqlalchemy>=2.0
-psycopg[binary]>=3.2
-plotly>=5.0
-pandas>=2.0
-apscheduler>=3.10

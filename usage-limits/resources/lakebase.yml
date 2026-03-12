@@ -1,5 +1,0 @@
-resources:
-  database_instances:
-    usage_limits_instance:
-      name: "usage-limits"
-      capacity: CU_1
