@@ -5,8 +5,9 @@
       "command": "uvx",
       "args": [
         "uc-mcp-proxy",
-        "--url", "${SLACK_MCP_URL:-https://slack-mcp-server-468531251905809.aws.databricksapps.com/mcp/}",
-        "--auth-type", "databricks-cli"
+        "--url", "${SLACK_MCP_URL:-https://slack-web-api-468531251905809.aws.databricksapps.com/mcp/}",
+        "--auth-type", "databricks-cli",
+        "--profile", "${DATABRICKS_CONFIG_PROFILE:-DEFAULT}"
       ]
     },
     "genie-mcp": {

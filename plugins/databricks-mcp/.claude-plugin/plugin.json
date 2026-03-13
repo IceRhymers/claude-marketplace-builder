@@ -1,9 +1,17 @@
 {
   "name": "icerhymers-databricks-mcp",
   "description": "Databricks-hosted MCP servers for Claude Code",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "author": {
     "name": "AI engineering"
   },
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "hooks": {
+    "SessionStart": [{
+      "hooks": [{
+        "type": "command",
+        "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/ensure-databricks-auth.sh"
+      }]
+    }]
+  }
 }
