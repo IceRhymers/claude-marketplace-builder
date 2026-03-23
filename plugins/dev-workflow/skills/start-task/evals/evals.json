@@ -1,0 +1,10 @@
+[
+  {"query": "start task #3", "should_trigger": true},
+  {"query": "implement the MCP registry task", "should_trigger": true},
+  {"query": "work on the auth refactor", "should_trigger": true},
+  {"query": "pick up task 14", "should_trigger": true},
+  {"query": "implement user login feature", "should_trigger": true},
+  {"query": "start working on the API caching task from Kanboard", "should_trigger": true},
+  {"query": "what time is it", "should_trigger": false},
+  {"query": "show me the code for the login page", "should_trigger": false}
+]

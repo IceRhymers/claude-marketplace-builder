@@ -1,0 +1,10 @@
+[
+  {"query": "check regressions", "should_trigger": true},
+  {"query": "run regression check", "should_trigger": true},
+  {"query": "are tests green", "should_trigger": true},
+  {"query": "run the test suite and check for failures", "should_trigger": true},
+  {"query": "any new test failures?", "should_trigger": true},
+  {"query": "did I break anything", "should_trigger": true},
+  {"query": "deploy to production", "should_trigger": false},
+  {"query": "explain how pytest works", "should_trigger": false}
+]
