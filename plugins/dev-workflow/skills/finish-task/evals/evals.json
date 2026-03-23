@@ -1,0 +1,10 @@
+[
+  {"query": "finish task", "should_trigger": true},
+  {"query": "task is done", "should_trigger": true},
+  {"query": "wrap up and submit a PR", "should_trigger": true},
+  {"query": "submit PR for this work", "should_trigger": true},
+  {"query": "I'm done, open a pull request", "should_trigger": true},
+  {"query": "push and create PR for this task", "should_trigger": true},
+  {"query": "what tasks are on the board", "should_trigger": false},
+  {"query": "start working on task 5", "should_trigger": false}
+]

@@ -1,0 +1,7 @@
+{
+  "name": "dev-workflow",
+  "description": "Kanboard + OpenSpec + TDD + agent swarm workflow for any project",
+  "version": "1.0.0",
+  "author": { "name": "IceRhymers" },
+  "skills": "./skills/"
+}
