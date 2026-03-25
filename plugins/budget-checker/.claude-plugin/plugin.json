@@ -1,9 +1,23 @@
 {
   "name": "icerhymers-budget-checker",
-  "description": "Checks AI Gateway budget limits on session start and blocks prompts when over budget",
-  "version": "1.0.0",
+  "description": "Blocks prompts when a user exceeds their Databricks AI Gateway token budget.",
+  "version": "1.0.1",
   "author": {
     "name": "AI engineering"
   },
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/check-budget.sh --enforce",
+            "timeout": 10000
+          }
+        ]
+      }
+    ]
+  }
 }
