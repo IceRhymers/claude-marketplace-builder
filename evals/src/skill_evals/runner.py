@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import random
 import sys
 from pathlib import Path
@@ -101,6 +102,36 @@ async def run_prompt_and_collect_skills(
         stderr_lines.append(line)
         logger.debug("CLI stderr: %s", line.rstrip())
 
+    # Build SDK subprocess env — inherit process env, then overlay Databricks
+    # AI Gateway vars so the spawned Claude Code process can reach the gateway.
+    # All vars are optional; if unset the SDK falls back to its own defaults
+    # (standard Anthropic API).
+    sdk_env = {k: v for k, v in os.environ.items()}
+    _databricks_vars = {
+        # Core auth — SP/PAT token doubles as the Anthropic key for AI Gateway
+        "ANTHROPIC_AUTH_TOKEN": os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
+        "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_AUTH_TOKEN")
+            or os.environ.get("ANTHROPIC_API_KEY", ""),
+        # AI Gateway base URL, e.g. https://<workspace>.azuredatabricks.net/api/2.0/...
+        "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL", ""),
+        # Endpoint name becomes the model identifier (e.g. databricks-claude-sonnet-4-5)
+        "ANTHROPIC_MODEL": os.environ.get("ANTHROPIC_MODEL", ""),
+        # Required header for Databricks AI Gateway coding-agent mode
+        "ANTHROPIC_CUSTOM_HEADERS": os.environ.get(
+            "ANTHROPIC_CUSTOM_HEADERS",
+            "x-databricks-use-coding-agent-mode: true",
+        ),
+        # Disable experimental betas that conflict with AI Gateway
+        "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": os.environ.get(
+            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "1"
+        ),
+        # Disable eager_input_streaming — causes 400s on AI Gateway tool calls
+        "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING": os.environ.get(
+            "CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING", ""
+        ),
+    }
+    sdk_env.update({k: v for k, v in _databricks_vars.items() if v != ""})
+
     options = ClaudeAgentOptions(
         plugins=[{"type": "local", "path": str(REPO_ROOT)}],
         allowed_tools=["Skill", "Read", "Glob", "Grep", "Bash"],
@@ -115,6 +146,7 @@ async def run_prompt_and_collect_skills(
         model=test.model,
         cwd=str(REPO_ROOT),
         stderr=capture_stderr,
+        env=sdk_env,
     )
 
     for attempt in range(max_retries + 1):
