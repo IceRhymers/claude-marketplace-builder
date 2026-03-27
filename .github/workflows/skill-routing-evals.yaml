@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: "Custom ANTHROPIC_BASE_URL (leave empty for default)"
+        description: "Custom ANTHROPIC_BASE_URL (leave empty to use DATABRICKS_AI_GATEWAY_URL secret)"
         required: false
         type: string
       workers:
@@ -42,9 +42,29 @@ jobs:
       - name: Run skill routing evals
         working-directory: evals
         env:
+          # --- Standard Anthropic (used when Databricks secrets are absent) ---
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
-          ANTHROPIC_BASE_URL: ${{ inputs.base_url || '' }}
+
+          # --- Databricks AI Gateway ---
+          # Set these secrets to route evals through Databricks instead of
+          # the standard Anthropic API.
+          #
+          # Required secrets:
+          #   DATABRICKS_SP_TOKEN       — Service principal PAT / OBO token
+          #   DATABRICKS_AI_GATEWAY_URL — e.g. https://<host>/api/2.0/serving-endpoints/<endpoint>/invocations
+          #   DATABRICKS_AI_GATEWAY_MODEL — AI Gateway endpoint name (becomes ANTHROPIC_MODEL)
+          #
+          # The runner uses ANTHROPIC_AUTH_TOKEN as the primary credential, so
+          # DATABRICKS_SP_TOKEN maps to both AUTH_TOKEN and API_KEY.
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ inputs.base_url || secrets.DATABRICKS_AI_GATEWAY_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.DATABRICKS_AI_GATEWAY_MODEL }}
+          # Required header for Databricks AI Gateway coding-agent mode
+          ANTHROPIC_CUSTOM_HEADERS: "x-databricks-use-coding-agent-mode: true"
+          # Disable experimental betas incompatible with AI Gateway
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
+          # Disable eager_input_streaming — causes 400s on AI Gateway tool calls
+          CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
         run: |
           uv run skill-evals \
             -j ${{ inputs.workers || '8' }} \
