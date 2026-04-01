@@ -52,7 +52,7 @@ jobs:
           #
           # Required secrets:
           #   DATABRICKS_SP_TOKEN       — Service principal PAT / OBO token
-          #   DATABRICKS_AI_GATEWAY_URL — e.g. https://<host>/api/2.0/serving-endpoints/<endpoint>/invocations
+          #   DATABRICKS_AI_GATEWAY_URL — e.g. https://WORKSPACE_ID.ai-gateway.cloud.databricks.com/anthropic
           #   DATABRICKS_AI_GATEWAY_MODEL — AI Gateway endpoint name (becomes ANTHROPIC_MODEL)
           #
           # The runner uses ANTHROPIC_AUTH_TOKEN as the primary credential, so
