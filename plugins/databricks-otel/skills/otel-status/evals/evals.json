@@ -1,0 +1,7 @@
+[
+  {"query": "Is OTEL telemetry configured?", "should_trigger": true},
+  {"query": "Check my OTEL status", "should_trigger": true},
+  {"query": "Is telemetry working for Databricks?", "should_trigger": true},
+  {"query": "Deploy a Databricks job", "should_trigger": false},
+  {"query": "Configure my inference backend", "should_trigger": false}
+]

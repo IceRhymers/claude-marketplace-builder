@@ -128,6 +128,18 @@ init:
 configure:
 	bash scripts/configure-inference.sh
 
+## Configure OTEL telemetry export to Databricks
+configure-otel:
+	bash scripts/configure-otel.sh
+
+## Remove inference backend configuration from settings.json
+unconfigure:
+	bash scripts/configure-inference.sh --uninstall
+
+## Remove OTEL telemetry configuration from settings.json
+unconfigure-otel:
+	bash scripts/configure-otel.sh --uninstall
+
 # ------------------------------------------------------------------------------
 # Databricks App targets
 # ------------------------------------------------------------------------------
@@ -153,5 +165,6 @@ test-app-integration:
 	cd $(APP)/app && uv run pytest tests/ -m integration -v
 
 .PHONY: help validate evals evals-generate evals-check-generated evals-install \
-	install-local uninstall-local init configure \
+	install-local uninstall-local init configure configure-otel \
+	unconfigure unconfigure-otel \
 	app-install test-app test-app-coverage test-app-unit test-app-integration

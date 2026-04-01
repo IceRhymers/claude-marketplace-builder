@@ -49,6 +49,12 @@ main() {
   discover_and_install_plugins "$INSTALL_DIR"
 
   # -------------------------------------------------------------------------
+  # Auto-configure OTEL if Databricks credentials are available
+  # -------------------------------------------------------------------------
+
+  auto_configure_otel "$INSTALL_DIR"
+
+  # -------------------------------------------------------------------------
   # Done
   # -------------------------------------------------------------------------
 
@@ -185,6 +191,35 @@ discover_and_install_plugins() {
 
   echo ""
   echo "Install results: $succeeded succeeded, $failed failed (of $plugin_count total)"
+}
+
+# ---------------------------------------------------------------------------
+# auto_configure_otel — Set up OTEL if Databricks credentials exist
+# ---------------------------------------------------------------------------
+auto_configure_otel() {
+  local install_dir="$1"
+  local settings_file="$HOME/.claude/settings.json"
+
+  # Check if Databricks credentials are already in settings.json
+  if [ -f "$settings_file" ]; then
+    local db_host db_token
+    db_host=$(jq -r '.env.DATABRICKS_HOST // empty' "$settings_file" 2>/dev/null) || db_host=""
+    db_token=$(jq -r '.env.DATABRICKS_TOKEN // empty' "$settings_file" 2>/dev/null) || db_token=""
+
+    if [ -n "$db_host" ] && [ -n "$db_token" ]; then
+      echo ""
+      echo "Databricks credentials found — configuring OTEL telemetry..."
+      bash "$install_dir/scripts/configure-otel.sh" </dev/null 2>&1 || {
+        echo "  WARNING: OTEL auto-configuration failed. Run manually:"
+        echo "    bash $install_dir/scripts/configure-otel.sh"
+      }
+      return
+    fi
+  fi
+
+  echo ""
+  echo "To enable OTEL telemetry, configure Databricks first then run:"
+  echo "  bash $install_dir/scripts/configure-otel.sh"
 }
 
 # ---------------------------------------------------------------------------

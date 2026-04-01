@@ -1,14 +1,6 @@
 {
   "name": "icerhymers-databricks-otel",
-  "description": "Auto-configures Claude Code OTEL telemetry export to a shared Databricks table",
-  "version": "1.0.1",
-  "author": { "name": "AI engineering" },
-  "hooks": {
-    "SessionStart": [{
-      "hooks": [{
-        "type": "command",
-        "command": "${CLAUDE_PLUGIN_ROOT}/scripts/setup-otel-env.sh"
-      }]
-    }]
-  }
+  "description": "OTEL telemetry configuration and diagnostics for Claude Code to Databricks",
+  "version": "2.0.0",
+  "author": { "name": "AI engineering" }
 }

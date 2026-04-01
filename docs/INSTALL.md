@@ -80,6 +80,28 @@ claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 
 If you're working in this repo, use `make configure` instead of the curl command for inference setup — it also generates `config/inference.env` for Makefile targets (evals, etc.).
 
+## Step 3: Enable OTEL Telemetry (Optional)
+
+If your team uses Databricks for telemetry, configure Claude Code to export OTEL metrics to a Unity Catalog table:
+
+```bash
+curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-otel.sh | bash
+```
+
+Or from within the repo:
+
+```bash
+make configure-otel
+```
+
+This reads your Databricks credentials from `~/.claude/settings.json` (set during Step 1), computes the OTEL endpoint URL and auth headers, and merges them back into settings.json. Restart Claude Code for the changes to take effect.
+
+**Why not a plugin hook?** OTEL env vars must be present before Claude Code starts — `SessionStart` hooks fire too late. The `settings.json` `env` block is loaded at process startup, which is the only mechanism that works.
+
+**Token rotation:** Re-run `configure-otel.sh` after updating your Databricks token to recompute the OTEL headers.
+
+**Verify:** Use `/otel-status` inside Claude Code to check whether OTEL is configured correctly.
+
 ## Verifying Installation
 
 ```bash

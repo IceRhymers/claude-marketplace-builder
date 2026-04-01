@@ -26,6 +26,18 @@ tests:
     prompt: "How do I connect MCP to our Genie space in Databricks?"
     expected_skill: mcp-setup
 
+  - name: otel-status-is-otel-telemetry-configured
+    prompt: "Is OTEL telemetry configured?"
+    expected_skill: otel-status
+
+  - name: otel-status-check-my-otel-status
+    prompt: "Check my OTEL status"
+    expected_skill: otel-status
+
+  - name: otel-status-is-telemetry-working-for-databricks
+    prompt: "Is telemetry working for Databricks?"
+    expected_skill: otel-status
+
   - name: databricks-lineage-trace-the-upstream-lineage-for
     prompt: "Trace the upstream lineage for the table main.sales.orders in Databricks Unity Catalog"
     expected_skill: databricks-lineage
@@ -49,6 +61,78 @@ tests:
   - name: databricks-workspace-files-show-me-all-python-scripts
     prompt: "Show me all Python scripts under /Repos/data-engineering/transformations"
     expected_skill: databricks-workspace-files
+
+  - name: check-regressions-check-regressions
+    prompt: "check regressions"
+    expected_skill: check-regressions
+
+  - name: check-regressions-run-regression-check
+    prompt: "run regression check"
+    expected_skill: check-regressions
+
+  - name: check-regressions-are-tests-green
+    prompt: "are tests green"
+    expected_skill: check-regressions
+
+  - name: check-regressions-run-the-test-suite-and
+    prompt: "run the test suite and check for failures"
+    expected_skill: check-regressions
+
+  - name: check-regressions-any-new-test-failures
+    prompt: "any new test failures?"
+    expected_skill: check-regressions
+
+  - name: check-regressions-did-i-break-anything
+    prompt: "did I break anything"
+    expected_skill: check-regressions
+
+  - name: finish-task-finish-task
+    prompt: "finish task"
+    expected_skill: finish-task
+
+  - name: finish-task-task-is-done
+    prompt: "task is done"
+    expected_skill: finish-task
+
+  - name: finish-task-wrap-up-and-submit-a
+    prompt: "wrap up and submit a PR"
+    expected_skill: finish-task
+
+  - name: finish-task-submit-pr-for-this-work
+    prompt: "submit PR for this work"
+    expected_skill: finish-task
+
+  - name: finish-task-im-done-open-a-pull
+    prompt: "I'm done, open a pull request"
+    expected_skill: finish-task
+
+  - name: finish-task-push-and-create-pr-for
+    prompt: "push and create PR for this task"
+    expected_skill: finish-task
+
+  - name: start-task-start-task-3
+    prompt: "start task #3"
+    expected_skill: start-task
+
+  - name: start-task-implement-the-mcp-registry-task
+    prompt: "implement the MCP registry task"
+    expected_skill: start-task
+
+  - name: start-task-work-on-the-auth-refactor
+    prompt: "work on the auth refactor"
+    expected_skill: start-task
+
+  - name: start-task-pick-up-task-14
+    prompt: "pick up task 14"
+    expected_skill: start-task
+
+  - name: start-task-implement-user-login-feature
+    prompt: "implement user login feature"
+    expected_skill: start-task
+
+  - name: start-task-start-working-on-the-api
+    prompt: "start working on the API caching task from Kanboard"
+    expected_skill: start-task
 
   - name: incident-response-we-have-a-production-outage
     prompt: "We have a production outage on the payments service, help me run incident response"

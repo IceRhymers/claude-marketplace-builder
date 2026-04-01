@@ -11,6 +11,9 @@ set -euo pipefail
 #   make configure
 #   bash scripts/configure-inference.sh
 #
+#   bash scripts/configure-inference.sh --uninstall   # Remove inference env vars
+#   make unconfigure
+#
 # Writes to ~/.claude/settings.json so Claude Code picks up the backend
 # automatically. If run from inside the repo, also writes config/inference.env
 # for Makefile targets.
@@ -18,8 +21,46 @@ set -euo pipefail
 # Re-run at any time to change your backend configuration.
 # ==============================================================================
 
+# All env vars this script may write — union across all backends.
+# Used by --uninstall to know what to remove.
+INFERENCE_KEYS=(
+  ANTHROPIC_BASE_URL
+  ANTHROPIC_AUTH_TOKEN
+  ANTHROPIC_DEFAULT_OPUS_MODEL
+  ANTHROPIC_DEFAULT_SONNET_MODEL
+  ANTHROPIC_DEFAULT_HAIKU_MODEL
+  ANTHROPIC_CUSTOM_HEADERS
+  CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+  DATABRICKS_HOST
+  DATABRICKS_TOKEN
+  ANTHROPIC_API_KEY
+  CLAUDE_CODE_USE_BEDROCK
+  AWS_REGION
+  AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY
+  AWS_PROFILE
+  CLAUDE_CODE_USE_VERTEX
+  CLOUD_ML_PROJECT_ID
+  CLOUD_ML_REGION
+)
+
 main() {
   local SETTINGS_FILE="$HOME/.claude/settings.json"
+
+  if [ "${1:-}" = "--uninstall" ]; then
+    check_prerequisites
+    remove_settings "$SETTINGS_FILE" "${INFERENCE_KEYS[@]}"
+
+    # Also remove config/inference.env if running from the repo
+    if [ -d "config" ] && [ -f "Makefile" ] && [ -f "config/inference.env" ]; then
+      rm -f "config/inference.env"
+      echo "  Removed: config/inference.env"
+    fi
+
+    echo ""
+    echo "  Inference configuration removed. Restart Claude Code for changes to take effect."
+    return
+  fi
 
   # -------------------------------------------------------------------------
   # Prerequisites
@@ -289,7 +330,7 @@ detect_databricks_profiles() {
   # Filter to valid profiles, extract name + host + auth_type
   local filtered
   filtered=$(echo "$raw_profiles" | jq -c '
-    [.profiles // [] | .[] | select(.valid == true) | {name, host, auth_type}]
+    [.profiles // [] | .[] | select(.valid == true and .auth_type == "pat") | {name, host, auth_type}]
   ' 2>/dev/null) || {
     echo "[]"
     return 0
@@ -297,6 +338,33 @@ detect_databricks_profiles() {
 
   echo "$filtered"
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# resolve_workspace_id — Get numeric workspace ID via SCIM API header
+#
+# Calls /api/2.0/preview/scim/v2/Me and reads x-databricks-org-id header.
+# Returns empty string on failure (missing token, network error, etc.).
+# ---------------------------------------------------------------------------
+
+resolve_workspace_id() {
+  local host="$1"
+  local token="$2"
+
+  if [ -z "$token" ] || [ -z "$host" ]; then
+    echo ""
+    return
+  fi
+
+  local headers
+  headers=$(curl -sI -m 10 \
+    -H "Authorization: Bearer ${token}" \
+    "${host}/api/2.0/preview/scim/v2/Me" 2>/dev/null) || { echo ""; return; }
+
+  local org_id
+  org_id=$(echo "$headers" | grep -i 'x-databricks-org-id' | head -1 | tr -d '\r' | awk '{print $2}') || { echo ""; return; }
+
+  echo "$org_id"
 }
 
 # ---------------------------------------------------------------------------
@@ -310,7 +378,7 @@ configure_databricks() {
   echo "  Databricks AI Gateway"
   echo "  =========================================="
   echo ""
-  echo "  The endpoint path /serving-endpoints/anthropic is fixed."
+  echo "  Uses the AI Gateway URL: https://{workspace_id}.ai-gateway.cloud.databricks.com/anthropic"
   echo ""
 
   local use_manual=true
@@ -401,7 +469,24 @@ configure_databricks() {
     auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
   fi
 
-  local base_url="${workspace_url}/serving-endpoints/anthropic"
+  # Resolve workspace ID via SCIM API
+  echo ""
+  echo "  Resolving workspace ID..."
+  local workspace_id
+  workspace_id=$(resolve_workspace_id "$workspace_url" "$auth_token")
+
+  if [ -z "$workspace_id" ]; then
+    echo "  Could not auto-detect workspace ID."
+    workspace_id=$(prompt_value "Databricks workspace ID (numeric, e.g., 1444828305810485)" "")
+    if [ -z "$workspace_id" ]; then
+      echo "  ERROR: Workspace ID is required."
+      exit 1
+    fi
+  else
+    echo "  Workspace ID: $workspace_id"
+  fi
+
+  local base_url="https://${workspace_id}.ai-gateway.cloud.databricks.com/anthropic"
   echo ""
   echo "  ANTHROPIC_BASE_URL: $base_url"
 
@@ -582,6 +667,52 @@ write_settings() {
 
   echo ""
   echo "  Written to: $settings_file"
+}
+
+# ---------------------------------------------------------------------------
+# remove_settings — Remove specified keys from ~/.claude/settings.json .env
+# ---------------------------------------------------------------------------
+
+remove_settings() {
+  local settings_file="$1"
+  shift
+  local -a keys_to_remove=("$@")
+
+  if [ ! -f "$settings_file" ]; then
+    echo "  No settings file found at $settings_file — nothing to remove."
+    return
+  fi
+
+  # Build a JSON array of key names
+  local keys_json="[]"
+  for k in "${keys_to_remove[@]}"; do
+    keys_json=$(echo "$keys_json" | jq --arg k "$k" '. + [$k]')
+  done
+
+  # Identify which keys are actually present
+  local present_keys
+  present_keys=$(jq -r --argjson keys "$keys_json" '
+    .env // {} | to_entries[] | select(.key as $k | $keys | index($k)) | .key
+  ' "$settings_file" 2>/dev/null) || present_keys=""
+
+  if [ -z "$present_keys" ]; then
+    echo "  No matching env vars found in $settings_file — nothing to remove."
+    return
+  fi
+
+  # Remove the keys
+  local tmp
+  tmp=$(mktemp)
+  jq --argjson keys "$keys_json" '
+    .env |= (if . then with_entries(select(.key as $k | $keys | index($k) | not)) else . end)
+    | if .env == {} or .env == null then del(.env) else . end
+  ' "$settings_file" > "$tmp"
+  mv "$tmp" "$settings_file"
+
+  echo "  Removed from $settings_file:"
+  while IFS= read -r k; do
+    echo "    - $k"
+  done <<< "$present_keys"
 }
 
 # ---------------------------------------------------------------------------
