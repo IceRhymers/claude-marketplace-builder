@@ -164,35 +164,7 @@ test-app-unit:
 test-app-integration:
 	cd $(APP)/app && uv run pytest tests/ -m integration -v
 
-# ------------------------------------------------------------------------------
-# claude-db proxy targets
-# ------------------------------------------------------------------------------
-
-## Build the claude-db proxy binary
-build-claude-db:
-	cd tools/claude-db && go build -ldflags="-s -w -X main.version=$(shell git describe --tags --always --dirty)" -o claude-db .
-
-## Run claude-db tests (with race detector)
-test-claude-db:
-	cd tools/claude-db && go test ./... -v -race
-
-## Install claude-db to ~/.claude/bin/
-install-claude-db: build-claude-db
-	mkdir -p $(HOME)/.claude/bin
-	cp tools/claude-db/claude-db $(HOME)/.claude/bin/claude-db
-	@echo "Installed to $(HOME)/.claude/bin/claude-db"
-	@echo "Add to PATH: export PATH=\"$(HOME)/.claude/bin:\$$PATH\""
-
-## Cross-compile claude-db for macOS (arm64, amd64) and Linux (amd64)
-dist-claude-db:
-	mkdir -p dist
-	cd tools/claude-db && \
-	GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o ../../dist/claude-db-darwin-arm64 . && \
-	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o ../../dist/claude-db-darwin-amd64 . && \
-	GOOS=linux  GOARCH=amd64 go build -ldflags="-s -w" -o ../../dist/claude-db-linux-amd64  .
-
 .PHONY: help validate evals evals-generate evals-check-generated evals-install \
 	install-local uninstall-local init configure configure-otel \
 	unconfigure unconfigure-otel \
-	app-install test-app test-app-coverage test-app-unit test-app-integration \
-	build-claude-db test-claude-db install-claude-db dist-claude-db
+	app-install test-app test-app-coverage test-app-unit test-app-integration
