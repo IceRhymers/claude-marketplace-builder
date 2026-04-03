@@ -23,32 +23,36 @@ Diagnose whether OTEL telemetry env vars are configured in the current Claude Co
    [ -n "${OTEL_EXPORTER_OTLP_METRICS_HEADERS:-}" ] && echo "OTEL_EXPORTER_OTLP_METRICS_HEADERS is set" || echo "OTEL_EXPORTER_OTLP_METRICS_HEADERS=NOT SET"
    ```
 
-2. Check if Databricks credentials are available and show token source:
+2. Check if Databricks credentials are available:
    ```bash
    [ -n "${DATABRICKS_HOST:-}" ] && echo "DATABRICKS_HOST=${DATABRICKS_HOST}" || echo "DATABRICKS_HOST=NOT SET"
    [ -n "${DATABRICKS_TOKEN:-}" ] && echo "DATABRICKS_TOKEN is set" || echo "DATABRICKS_TOKEN=NOT SET"
-   [ -n "${DATABRICKS_CONFIG_PROFILE:-}" ] && echo "DATABRICKS_CONFIG_PROFILE=${DATABRICKS_CONFIG_PROFILE}" || echo "DATABRICKS_CONFIG_PROFILE=NOT SET (using DEFAULT)"
+   [ -n "${DATABRICKS_CONFIG_PROFILE:-}" ] && echo "DATABRICKS_CONFIG_PROFILE=${DATABRICKS_CONFIG_PROFILE}" || echo "DATABRICKS_CONFIG_PROFILE=NOT SET"
    ```
 
-3. Check if OTEL vars exist in `~/.claude/settings.json` and check token age:
+3. Check if OTEL vars exist in `~/.claude/settings.json`:
    ```bash
    jq '.env | with_entries(select(.key | startswith("OTEL") or . == "CLAUDE_CODE_ENABLE_TELEMETRY"))' ~/.claude/settings.json 2>/dev/null || echo "Could not read settings.json"
-   # Check when settings.json was last modified (proxy for token age)
-   if [ -f "$HOME/.claude/settings.json" ]; then
-     mod_time=$(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$HOME/.claude/settings.json" 2>/dev/null || stat -c "%y" "$HOME/.claude/settings.json" 2>/dev/null | cut -d. -f1)
-     echo "settings.json last modified: $mod_time"
-     # Calculate age in minutes
-     mod_epoch=$(stat -f "%m" "$HOME/.claude/settings.json" 2>/dev/null || stat -c "%Y" "$HOME/.claude/settings.json" 2>/dev/null)
-     now_epoch=$(date +%s)
-     age_minutes=$(( (now_epoch - mod_epoch) / 60 ))
-     echo "Approximate token age: ${age_minutes} minutes"
-     if [ "$age_minutes" -gt 50 ]; then
-       echo "WARNING: Token may be near or past the ~1 hour OAuth expiry. Consider restarting Claude Code."
-     fi
+   ```
+
+4. Detect token type and check token age:
+   ```bash
+   # Detect whether using a PAT or OAuth
+   if [ -n "${DATABRICKS_TOKEN:-}" ] && ! databricks auth token --profile "${DATABRICKS_CONFIG_PROFILE:-DEFAULT}" >/dev/null 2>&1; then
+     echo "Token type: PAT (DATABRICKS_TOKEN env var set, no working CLI profile)"
+     echo "PATs are long-lived (typically 90 days). No restart-based refresh needed."
+   elif [ -n "${DATABRICKS_CONFIG_PROFILE:-}" ] && databricks auth token --profile "${DATABRICKS_CONFIG_PROFILE}" >/dev/null 2>&1; then
+     echo "Token type: OAuth (CLI profile ${DATABRICKS_CONFIG_PROFILE} active)"
+     echo "OAuth tokens expire after ~1 hour. Restart Claude Code if telemetry stops."
+   elif [ -n "${DATABRICKS_TOKEN:-}" ]; then
+     echo "Token type: PAT (DATABRICKS_TOKEN env var set)"
+     echo "PATs are long-lived (typically 90 days). No restart-based refresh needed."
+   else
+     echo "Token type: Unknown — neither DATABRICKS_TOKEN nor a working CLI profile detected"
    fi
    ```
 
-4. Based on findings, guide the user:
+5. Based on findings, guide the user:
    - **OTEL vars missing from settings.json**: Run the configure script:
      ```bash
      bash scripts/configure-otel.sh
@@ -60,10 +64,10 @@ Diagnose whether OTEL telemetry env vars are configured in the current Claude Co
      bash scripts/configure-inference.sh
      # Or: make configure
      ```
-   - **Token age > 50 minutes**: Restart Claude Code to obtain a fresh OAuth token. OTEL metrics stop exporting silently after ~1 hour without notification.
-   - **Token rotation needed**: Re-run `configure-otel.sh` to recompute OTEL headers with the new token.
+   - **Token rotation needed (OAuth)**: Restart Claude Code to obtain a fresh OAuth token.
+   - **Token rotation needed (PAT)**: Your PAT is long-lived. If expired, generate a new PAT in Databricks and re-run `configure-otel.sh`.
 
-5. Report the status with clear next steps. Remind the user that:
+6. Report the status with clear next steps. Remind the user:
    - OTEL env vars must be in `~/.claude/settings.json` (not set via hooks) because they are needed before Claude Code starts.
-   - The OTEL OAuth token expires after ~1 hour. If the session has been running longer than 50 minutes, recommend restarting Claude Code to restore telemetry export.
-   - The active profile is shown by `DATABRICKS_CONFIG_PROFILE` (defaults to `DEFAULT` if unset).
+   - If using OAuth (via claude-db or CLI profile), token expires after ~1 hour. Restart Claude Code to refresh.
+   - If using a PAT, token is long-lived (typically 90 days). Check your workspace PAT settings for exact expiry.

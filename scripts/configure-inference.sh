@@ -33,15 +33,7 @@ INFERENCE_KEYS=(
   CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
   DATABRICKS_HOST
   DATABRICKS_TOKEN
-  ANTHROPIC_API_KEY
-  CLAUDE_CODE_USE_BEDROCK
-  AWS_REGION
-  AWS_ACCESS_KEY_ID
-  AWS_SECRET_ACCESS_KEY
-  AWS_PROFILE
-  CLAUDE_CODE_USE_VERTEX
-  CLOUD_ML_PROJECT_ID
-  CLOUD_ML_REGION
+  DATABRICKS_CONFIG_PROFILE
 )
 
 main() {
@@ -69,7 +61,7 @@ main() {
   check_prerequisites
 
   # -------------------------------------------------------------------------
-  # Banner & menu
+  # Banner
   # -------------------------------------------------------------------------
 
   clear_screen
@@ -79,34 +71,14 @@ main() {
   echo "  This configures ~/.claude/settings.json so Claude Code"
   echo "  picks up the backend automatically — no shell sourcing needed."
   echo ""
-  local choice
-  choice=$(select_menu "  Select a backend:" \
-    "Databricks AI Gateway  (recommended)" \
-    "Claude Max  (no configuration needed)" \
-    "Anthropic Direct API" \
-    "AWS Bedrock" \
-    "Google Vertex AI" \
-    "Custom endpoint")
-
-  # Claude Max needs no env vars — skip straight to confirmation
-  if [ "$choice" -eq 1 ]; then
-    configure_claude_max
-    return
-  fi
 
   # Temp file to collect KEY=VALUE pairs
   local env_file
   env_file=$(mktemp)
   trap "rm -f '$env_file'" EXIT
 
-  local profile_name
-  case "$choice" in
-    0) profile_name="databricks";  configure_databricks "$env_file" ;;
-    2) profile_name="anthropic";   configure_anthropic "$env_file" ;;
-    3) profile_name="bedrock";     configure_bedrock "$env_file" ;;
-    4) profile_name="vertex";      configure_vertex "$env_file" ;;
-    5) profile_name="custom";      configure_custom "$env_file" ;;
-  esac
+  local profile_name="databricks"
+  configure_databricks "$env_file"
 
   # -------------------------------------------------------------------------
   # Write to ~/.claude/settings.json
@@ -311,7 +283,7 @@ select_menu() {
 # ---------------------------------------------------------------------------
 # detect_databricks_profiles — Detect valid Databricks CLI profiles
 #
-# Prints a JSON array of valid profiles to stdout.
+# Prints a JSON array of valid PAT profiles to stdout.
 # Returns 0 if databricks CLI is found, 1 if not.
 # ---------------------------------------------------------------------------
 
@@ -327,10 +299,10 @@ detect_databricks_profiles() {
     return 0
   }
 
-  # Filter to valid profiles, extract name + host + auth_type
+  # Filter to valid PAT profiles, extract name + host + auth_type
   local filtered
   filtered=$(echo "$raw_profiles" | jq -c '
-    [.profiles // [] | .[] | select(.valid == true) | {name, host, auth_type}]
+    [.profiles // [] | .[] | select(.valid == true) | select(.auth_type == "pat") | {name, host, auth_type}]
   ' 2>/dev/null) || {
     echo "[]"
     return 0
@@ -368,7 +340,7 @@ resolve_workspace_id() {
 }
 
 # ---------------------------------------------------------------------------
-# Profile configurators — each writes KEY=VALUE lines to the env file
+# configure_databricks — Configure Databricks AI Gateway backend
 # ---------------------------------------------------------------------------
 
 configure_databricks() {
@@ -415,20 +387,19 @@ configure_databricks() {
 
     if [ "$profile_choice" -lt "$profile_count" ]; then
       # User selected a CLI profile
-      local selected_name="${profile_names[$profile_choice]}"
+      selected_profile_name="${profile_names[$profile_choice]}"
       local selected_host="${profile_hosts[$profile_choice]}"
-      selected_profile_name="$selected_name"
 
       # Strip trailing slash from host
       selected_host="${selected_host%/}"
       workspace_url="$selected_host"
 
-      echo "  Using profile: $selected_name"
+      echo "  Using profile: $selected_profile_name"
       echo "  Host: $selected_host"
 
       # Try to get auth token from the CLI
       local env_json
-      env_json=$(databricks auth env --profile "$selected_name" --output json 2>/dev/null) || env_json=""
+      env_json=$(databricks auth env --profile "$selected_profile_name" --output json 2>/dev/null) || env_json=""
 
       if [ -n "$env_json" ]; then
         auth_token=$(echo "$env_json" | jq -r '.env.DATABRICKS_TOKEN // empty' 2>/dev/null) || auth_token=""
@@ -436,10 +407,10 @@ configure_databricks() {
 
       if [ -z "$auth_token" ]; then
         echo ""
-        echo "  WARNING: Could not retrieve token for profile '$selected_name'."
-        echo "  The token may be expired. Try: databricks auth login --profile $selected_name"
+        echo "  WARNING: Could not retrieve token for profile '$selected_profile_name'."
+        echo "  The token may be expired. Try: databricks auth login --profile $selected_profile_name"
         echo ""
-        auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
+        auth_token=$(prompt_secret "Databricks PAT (ANTHROPIC_AUTH_TOKEN)")
       fi
 
       use_manual=false
@@ -468,7 +439,7 @@ configure_databricks() {
     # Strip trailing slash
     workspace_url="${workspace_url%/}"
 
-    auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
+    auth_token=$(prompt_secret "Databricks PAT (ANTHROPIC_AUTH_TOKEN)")
   fi
 
   # Resolve workspace ID via SCIM API
@@ -508,347 +479,15 @@ configure_databricks() {
     fi
     if [ -n "$selected_profile_name" ]; then
       echo "DATABRICKS_CONFIG_PROFILE=${selected_profile_name}"
-    fi
-  } > "$env_file"
-
-  # -------------------------------------------------------------------------
-  # Offer token refresh method: proxy (recommended), shell wrapper, or skip
-  # -------------------------------------------------------------------------
-
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Token Refresh Method"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo ""
-  echo "  OAuth tokens expire after ~1 hour. Choose how to handle refresh:"
-  echo ""
-
-  local refresh_choice
-  refresh_choice=$(select_menu "  Token refresh method:" \
-    "claude-db proxy (recommended)  — Refreshes tokens per-request. Works for inference + OTEL." \
-    "Shell wrapper                  — Refreshes tokens at session start only." \
-    "Skip                           — Manual token management.")
-
-  case "$refresh_choice" in
-    0) install_claude_db_proxy "$selected_profile_name" ;;
-    1) install_token_refresh_wrapper ;;
-    2)
-      echo ""
-      echo "  Skipped. To configure manually later, run: make configure"
-      echo ""
-      ;;
-  esac
-}
-
-# ---------------------------------------------------------------------------
-# install_claude_db_proxy — Install or guide the user to install claude-db
-# ---------------------------------------------------------------------------
-
-install_claude_db_proxy() {
-  local profile_name="${1:-}"
-  local bin_dir="$HOME/.claude/bin"
-  local bin_path="$bin_dir/claude-db"
-
-  echo ""
-  echo "  claude-db proxy"
-  echo ""
-
-  # Check if already installed
-  if [ -x "$bin_path" ]; then
-    echo "  claude-db is already installed at $bin_path"
-    echo ""
-    _claude_db_ensure_path "$bin_dir"
-    return
-  fi
-
-  # Try to build from source if Go is available and we're in the repo
-  if command -v go &>/dev/null && [ -d "tools/claude-db" ] && [ -f "tools/claude-db/go.mod" ]; then
-    echo "  Go toolchain found. Building claude-db from source..."
-    if make build-claude-db 2>/dev/null && make install-claude-db 2>/dev/null; then
-      echo ""
-      echo "  claude-db installed to $bin_path"
-      echo ""
-      _claude_db_ensure_path "$bin_dir"
-      return
     else
-      echo "  WARNING: Build failed. Falling back to manual instructions."
-    fi
-  fi
-
-  # Fallback: print download instructions
-  echo "  claude-db is not installed. To install:"
-  echo ""
-  echo "  Option A — Build from source (requires Go 1.22+):"
-  echo "    git clone https://github.com/IceRhymers/claude-marketplace-builder"
-  echo "    cd claude-marketplace-builder"
-  echo "    make build-claude-db && make install-claude-db"
-  echo ""
-  echo "  Option B — Download pre-built binary:"
-  echo "    https://github.com/IceRhymers/claude-marketplace-builder/releases"
-  echo "    Copy the binary to: $bin_path"
-  echo "    chmod +x $bin_path"
-  echo ""
-  echo "  Then add to PATH:"
-  echo "    export PATH=\"$bin_dir:\$PATH\""
-  echo ""
-  echo "  Usage (drop-in replacement for 'claude'):"
-  if [ -n "$profile_name" ]; then
-    echo "    claude-db --profile $profile_name"
-  else
-    echo "    claude-db"
-  fi
-  echo ""
-}
-
-# _claude_db_ensure_path — Add ~/.claude/bin to PATH in the user's rc file if needed
-_claude_db_ensure_path() {
-  local bin_dir="$1"
-
-  # Detect shell rc file
-  local rc_file
-  local shell_name
-  shell_name="${SHELL##*/}"
-  case "$shell_name" in
-    zsh)  rc_file="$HOME/.zshrc" ;;
-    bash) rc_file="$HOME/.bashrc" ;;
-    *)    rc_file="$HOME/.bashrc" ;;
-  esac
-
-  # Skip if already in PATH or already in rc file
-  if echo "$PATH" | grep -qF "$bin_dir"; then
-    return
-  fi
-  if [ -f "$rc_file" ] && grep -qF "$bin_dir" "$rc_file" 2>/dev/null; then
-    return
-  fi
-
-  {
-    echo ""
-    echo "# claude-db proxy — add to PATH"
-    echo "export PATH=\"$bin_dir:\$PATH\""
-  } >> "$rc_file"
-
-  echo "  Added $bin_dir to PATH in $rc_file"
-  echo "  Run: source $rc_file"
-  echo ""
-}
-
-# ---------------------------------------------------------------------------
-# install_token_refresh_wrapper — Copy refresh script and patch shell rc file
-# ---------------------------------------------------------------------------
-
-install_token_refresh_wrapper() {
-  local scripts_dir="$HOME/.claude/scripts"
-  local target="$scripts_dir/refresh-databricks-token.sh"
-
-  # Locate the source refresh script (works both from repo and curl-pipe-bash)
-  local source_script=""
-  # Check relative to this script's location first
-  local this_dir
-  this_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || this_dir=""
-  if [ -n "$this_dir" ] && [ -f "$this_dir/refresh-databricks-token.sh" ]; then
-    source_script="$this_dir/refresh-databricks-token.sh"
-  fi
-
-  # Install the refresh script
-  mkdir -p "$scripts_dir"
-
-  if [ -n "$source_script" ]; then
-    cp "$source_script" "$target"
-  else
-    # Fallback: download from repo if running via curl-pipe-bash
-    if command -v curl &>/dev/null; then
-      curl -sSL \
-        "https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/refresh-databricks-token.sh" \
-        -o "$target" 2>/dev/null || {
-        echo ""
-        echo "  WARNING: Could not download refresh-databricks-token.sh."
-        echo "  Please copy it manually to: $target"
-        echo ""
-        return
-      }
-    else
-      echo ""
-      echo "  WARNING: Could not install refresh script (curl not available)."
-      echo "  Please copy scripts/refresh-databricks-token.sh to: $target"
-      echo ""
-      return
-    fi
-  fi
-
-  chmod +x "$target"
-
-  # Detect shell and rc file
-  local rc_file
-  local shell_name
-  shell_name="${SHELL##*/}"
-  case "$shell_name" in
-    zsh)  rc_file="$HOME/.zshrc" ;;
-    bash) rc_file="$HOME/.bashrc" ;;
-    *)    rc_file="$HOME/.bashrc" ;;
-  esac
-
-  # Back up rc file
-  if [ -f "$rc_file" ]; then
-    local backup="${rc_file}.bak.$(date +%Y%m%d)"
-    cp "$rc_file" "$backup"
-    echo "  Backed up: $backup"
-  fi
-
-  # Duplicate detection — skip if wrapper already present
-  if [ -f "$rc_file" ] && grep -q 'refresh-databricks-token.sh' "$rc_file" 2>/dev/null; then
-    echo ""
-    echo "  Token refresh wrapper already present in $rc_file — skipping."
-    echo ""
-    return
-  fi
-
-  # Append the claude() wrapper function
-  {
-    echo ""
-    echo "# Claude Code — automatic Databricks token refresh"
-    echo "claude() {"
-    echo "  if [ -x \"\$HOME/.claude/scripts/refresh-databricks-token.sh\" ]; then"
-    echo "    bash \"\$HOME/.claude/scripts/refresh-databricks-token.sh\" 2>/dev/null || true"
-    echo "  fi"
-    echo "  command claude \"\$@\""
-    echo "}"
-  } >> "$rc_file"
-
-  echo ""
-  echo "  Token refresh wrapper installed!"
-  echo "    Script:  $target"
-  echo "    Added to: $rc_file"
-  echo ""
-  echo "  Run the following to activate in your current session:"
-  echo "    source $rc_file"
-  echo ""
-}
-
-configure_anthropic() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  Anthropic Direct"
-  echo "  =========================================="
-  echo ""
-
-  local api_key
-  api_key=$(prompt_secret "Anthropic API key (ANTHROPIC_API_KEY)")
-
-  : > "$env_file"
-  if [ -n "$api_key" ]; then
-    echo "ANTHROPIC_API_KEY=${api_key}" > "$env_file"
-  fi
-}
-
-configure_bedrock() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  AWS Bedrock"
-  echo "  =========================================="
-  echo ""
-
-  local aws_region
-  aws_region=$(prompt_value "AWS region (e.g., us-east-1)" "us-east-1")
-
-  local auth_choice
-  auth_choice=$(select_menu "  Authentication method:" \
-    "AWS access key + secret key" \
-    "AWS CLI profile name" \
-    "Skip (use instance role, SSO, or env vars)")
-
-  {
-    echo "CLAUDE_CODE_USE_BEDROCK=1"
-    echo "AWS_REGION=${aws_region}"
-  } > "$env_file"
-
-  case "$auth_choice" in
-    0)
-      local aws_access_key aws_secret_key
-      aws_access_key=$(prompt_secret "AWS Access Key ID")
-      aws_secret_key=$(prompt_secret "AWS Secret Access Key")
-      [ -n "$aws_access_key" ] && echo "AWS_ACCESS_KEY_ID=${aws_access_key}" >> "$env_file"
-      [ -n "$aws_secret_key" ] && echo "AWS_SECRET_ACCESS_KEY=${aws_secret_key}" >> "$env_file"
-      ;;
-    1)
-      local aws_profile
-      aws_profile=$(prompt_value "AWS profile name" "default")
-      echo "AWS_PROFILE=${aws_profile}" >> "$env_file"
-      ;;
-  esac
-}
-
-configure_vertex() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  Google Vertex AI"
-  echo "  =========================================="
-  echo ""
-
-  local gcp_project
-  gcp_project=$(prompt_value "GCP Project ID" "")
-
-  if [ -z "$gcp_project" ]; then
-    echo "  ERROR: GCP Project ID is required."
-    exit 1
-  fi
-
-  local gcp_region
-  gcp_region=$(prompt_value "GCP region (e.g., us-east5)" "us-east5")
-
-  {
-    echo "CLAUDE_CODE_USE_VERTEX=1"
-    echo "CLOUD_ML_PROJECT_ID=${gcp_project}"
-    echo "CLOUD_ML_REGION=${gcp_region}"
-  } > "$env_file"
-
-  echo ""
-  echo "  Make sure you have authenticated with: gcloud auth application-default login"
-}
-
-configure_custom() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  Custom Endpoint"
-  echo "  =========================================="
-  echo ""
-
-  local base_url
-  base_url=$(prompt_value "Custom base URL" "")
-
-  if [ -z "$base_url" ]; then
-    echo "  ERROR: Base URL is required."
-    exit 1
-  fi
-
-  local auth_token
-  auth_token=$(prompt_secret "Auth token (ANTHROPIC_AUTH_TOKEN)")
-
-  {
-    echo "ANTHROPIC_BASE_URL=${base_url}"
-    if [ -n "$auth_token" ]; then
-      echo "ANTHROPIC_AUTH_TOKEN=${auth_token}"
+      echo "DATABRICKS_CONFIG_PROFILE=DEFAULT"
     fi
   } > "$env_file"
-}
 
-configure_claude_max() {
-  clear_screen
-  echo "  Claude Max"
-  echo "  =========================================="
   echo ""
-  echo "  Claude Max includes inference — no additional configuration needed."
-  echo ""
-  echo "  Just make sure you're signed in:"
-  echo "    1. Run 'claude' in your terminal"
-  echo "    2. Sign in with your Anthropic account when prompted"
-  echo ""
-  echo "  That's it! Claude Code will use your Max subscription automatically."
-  echo ""
+  echo "  NOTE: MCP servers (Slack, Genie) and budget enforcement require Databricks CLI auth."
+  echo "  If you use these features, also run: databricks auth login --profile DEFAULT"
+  echo "  For automatic credential management, see claude-db: make install-claude-db"
 }
 
 # ---------------------------------------------------------------------------
@@ -876,7 +515,7 @@ write_settings() {
     echo "  Backed up: $backup"
 
     local tmp
-    tmp=$(mktemp -p "$(dirname "$settings_file")")
+    tmp=$(mktemp)
     jq --argjson new_env "$env_json" '.env = ((.env // {}) + $new_env)' "$settings_file" > "$tmp"
     mv "$tmp" "$settings_file"
   else
@@ -920,7 +559,7 @@ remove_settings() {
 
   # Remove the keys
   local tmp
-  tmp=$(mktemp -p "$(dirname "$settings_file")")
+  tmp=$(mktemp)
   jq --argjson keys "$keys_json" '
     .env |= (if . then with_entries(select(.key as $k | $keys | index($k) | not)) else . end)
     | if .env == {} or .env == null then del(.env) else . end

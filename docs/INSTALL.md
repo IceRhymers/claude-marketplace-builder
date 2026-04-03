@@ -9,51 +9,62 @@
 
 ## Step 1: Set Up Inference
 
-> **Already have Claude Code working?** If you can run `claude` and get responses (e.g., you're on Claude Max or already configured a backend), skip to [Step 2](#step-2-install-the-marketplace).
+Claude Code needs a Databricks AI Gateway connection before it can do anything. There are two paths — choose based on your needs:
 
-Claude Code needs an inference backend before it can do anything. Run the interactive setup:
+| Feature | PAT Token | claude-db Proxy |
+|---|---|---|
+| AI Gateway inference | Yes | Yes |
+| OTEL telemetry export | Yes | Yes |
+| MCP servers (Slack, Genie) | Requires separate `databricks auth login` | Yes (automatic) |
+| Budget enforcement | Yes (via env var) | Yes (automatic) |
+| Token refresh | Manual (regenerate PAT) | Automatic (OAuth) |
+| Setup complexity | Low | Medium |
 
-```bash
-curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-inference.sh | bash
-```
+### Option A: PAT Token (Recommended for simplicity)
 
-This walks you through connecting Claude Code to one of:
-
-| Backend | Best for |
-|---------|----------|
-| **Databricks AI Gateway** | Teams using Databricks (auto-detects CLI profiles, supports OAuth + PAT) |
-| **Claude Max** | Individual subscribers — zero config needed |
-| **Anthropic Direct API** | Direct API key access |
-| **AWS Bedrock** | AWS-native deployments |
-| **Google Vertex AI** | GCP-native deployments |
-| **Custom endpoint** | Proxies, self-hosted, or other setups |
-
-The script writes to `~/.claude/settings.json` so Claude Code picks up the backend automatically — no shell sourcing needed. Re-run at any time to change backends.
-
-**OAuth vs PAT:** The Databricks profile now supports OAuth as the primary auth method (via `databricks auth login`). Personal Access Tokens (PATs) remain supported as a fallback for environments without Databricks CLI. If you use OAuth, the configure script can set up an automatic token refresh wrapper so tokens stay fresh across long sessions.
-
-### Manual inference setup
-
-If you prefer not to use the interactive script, set env vars directly in your shell profile. Example for Databricks using OAuth:
+Run the interactive setup:
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-export ANTHROPIC_BASE_URL="https://your-workspace.cloud.databricks.com/serving-endpoints/anthropic"
-export DATABRICKS_CONFIG_PROFILE="DEFAULT"   # profile from `databricks auth login`
-# ANTHROPIC_AUTH_TOKEN is populated by the token refresh wrapper when using OAuth
-export ANTHROPIC_DEFAULT_OPUS_MODEL="databricks-claude-opus-4-6"
-export ANTHROPIC_DEFAULT_SONNET_MODEL="databricks-claude-sonnet-4-5"
-export ANTHROPIC_DEFAULT_HAIKU_MODEL="databricks-claude-haiku-4-5"
-export ANTHROPIC_CUSTOM_HEADERS="x-databricks-use-coding-agent-mode: true"
-export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="1"
+make configure
 ```
 
-For PAT-based auth (no Databricks CLI), replace the `DATABRICKS_CONFIG_PROFILE` line with:
+This calls `scripts/configure-inference.sh`, which detects existing Databricks CLI profiles or prompts for manual entry (workspace URL + PAT token). The script auto-resolves your workspace ID and writes settings to `~/.claude/settings.json` — no shell sourcing needed.
+
+For MCP servers (Slack, Genie) and budget enforcement, also run:
+
 ```bash
-export ANTHROPIC_AUTH_TOKEN="your-databricks-pat"
+databricks auth login --profile DEFAULT
 ```
 
-For other backends, see the profile templates in `config/profiles/`.
+For OTEL telemetry, run:
+
+```bash
+make configure-otel
+```
+
+### Option B: claude-db Proxy (Recommended for automatic credential management)
+
+Build and install the proxy:
+
+```bash
+make install-claude-db
+```
+
+Then use `claude-db` instead of `claude`. The proxy handles the full OAuth token lifecycle automatically for inference, OTEL, and all plugins — no manual token management needed. Supports `--profile`, `--otel`, and `--upstream` flags.
+
+### Existing user cleanup
+
+Users who previously installed the shell wrapper may have:
+
+- `~/.claude/scripts/refresh-databricks-token.sh`
+- A `claude()` function in their `.bashrc`/`.zshrc`
+
+These are now obsolete. Optionally remove:
+
+```bash
+rm -f ~/.claude/scripts/refresh-databricks-token.sh
+# Remove the claude() function from your shell rc file
+```
 
 ## Step 2: Install the Marketplace
 
@@ -86,17 +97,11 @@ claude plugin install icerhymers-specialized-tools@icerhymers-marketplace
 
 ### For marketplace developers
 
-If you're working in this repo, use `make configure` instead of the curl command for inference setup — it also generates `config/inference.env` for Makefile targets (evals, etc.).
+If you're working in this repo, use `make configure` for inference setup — it also generates `config/inference.env` for Makefile targets (evals, etc.).
 
 ## Step 3: Enable OTEL Telemetry (Optional)
 
 If your team uses Databricks for telemetry, configure Claude Code to export OTEL metrics to a Unity Catalog table:
-
-```bash
-curl -sSL https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/configure-otel.sh | bash
-```
-
-Or from within the repo:
 
 ```bash
 make configure-otel
@@ -106,9 +111,7 @@ This reads your Databricks credentials from `~/.claude/settings.json` (set durin
 
 **Why not a plugin hook?** OTEL env vars must be present before Claude Code starts — `SessionStart` hooks fire too late. The `settings.json` `env` block is loaded at process startup, which is the only mechanism that works.
 
-**Token rotation:** Re-run `configure-otel.sh` after updating your Databricks token to recompute the OTEL headers.
-
-**OTEL Token Lifetime:** OTEL metrics use an OAuth token that expires after ~1 hour. After expiry, metrics stop exporting silently. For complete telemetry coverage during long sessions, restart Claude Code approximately every hour. A future update may add mid-session token refresh.
+**Token rotation:** Re-run `configure-otel.sh` after updating your Databricks PAT to recompute the OTEL headers. With `claude-db`, token rotation is handled automatically.
 
 **Verify:** Use `/otel-status` inside Claude Code to check whether OTEL is configured correctly.
 

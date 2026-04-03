@@ -316,7 +316,7 @@ detect_databricks_profiles() {
 
   local filtered
   filtered=$(echo "$raw_profiles" | jq -c '
-    [.profiles // [] | .[] | select(.valid == true) | {name, host, auth_type}]
+    [.profiles // [] | .[] | select(.valid == true) | select(.auth_type == "pat") | {name, host, auth_type}]
   ' 2>/dev/null) || {
     echo "[]"
     return 0

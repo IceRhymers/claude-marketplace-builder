@@ -47,19 +47,15 @@ templates/
   basic-skill/                     Simple skill template (no scripts)
   advanced-skill/                  Full skill template (scripts + references)
 config/
-  profiles/                        Inference backend profile templates
-    databricks.env.template        Databricks AI Gateway (default)
-    anthropic.env.template         Anthropic direct API
-    bedrock.env.template           AWS Bedrock
-    vertex.env.template            Google Vertex AI
-    custom.env.template            Custom endpoint
+  profiles/                        Inference profile templates
+    databricks.env.template        Databricks AI Gateway
   inference.env                    Generated config (gitignored)
 scripts/
   init.sh                          One-time setup — replaces {{placeholders}}
   install.sh                       End-user install and update
   update.sh                        Safe update from within Claude Code
   validate-skill.sh                Validates skill structure and frontmatter
-  configure-inference.sh           Configure inference backend interactively
+  configure-inference.sh           Configure Databricks AI Gateway inference
 docs/
   INSTALL.md                       Installation guide
   SKILL-AUTHORING.md               Skill authoring guide
@@ -176,4 +172,6 @@ Common tasks are exposed via `make` targets (run `make help` to list them). When
 
 ## Inference Configuration
 
-The inference backend is configured via `config/inference.env` (gitignored). Run `make configure` to set up interactively — it defaults to Databricks AI Gateway. Profile templates under `config/profiles/` document the env vars each backend needs. The Makefile auto-sources `config/inference.env` when it exists, exporting variables to all child processes (evals, etc.).
+Run `make configure` to set up Databricks AI Gateway inference. The script detects PAT-based Databricks CLI profiles or prompts for manual entry (workspace URL + PAT token). Configuration is written to `~/.claude/settings.json`.
+
+For automatic credential management using short-lived OAuth tokens, use `claude-db` instead — see `make install-claude-db`.

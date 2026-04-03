@@ -207,21 +207,6 @@ auto_configure_otel() {
     db_token=$(jq -r '.env.DATABRICKS_TOKEN // empty' "$settings_file" 2>/dev/null) || db_token=""
     db_profile=$(jq -r '.env.DATABRICKS_CONFIG_PROFILE // empty' "$settings_file" 2>/dev/null) || db_profile=""
 
-    # If a CLI profile is configured but no token is present, try to fetch a fresh OAuth token
-    if [ -n "$db_host" ] && [ -z "$db_token" ] && [ -n "$db_profile" ] && command -v databricks &>/dev/null; then
-      echo ""
-      echo "Databricks CLI profile '${db_profile}' found — fetching OAuth token..."
-      local fresh_token
-      fresh_token=$(databricks auth token --profile "$db_profile" 2>/dev/null | jq -r '.access_token // empty' 2>/dev/null) || fresh_token=""
-      if [ -n "$fresh_token" ]; then
-        db_token="$fresh_token"
-        echo "  OAuth token obtained from profile '${db_profile}'."
-      else
-        echo "  WARNING: Could not retrieve OAuth token from profile '${db_profile}'."
-        echo "    Ensure you are logged in: databricks auth login --profile ${db_profile}"
-      fi
-    fi
-
     if [ -n "$db_host" ] && [ -n "$db_token" ]; then
       echo ""
       echo "Databricks credentials found — configuring OTEL telemetry..."
