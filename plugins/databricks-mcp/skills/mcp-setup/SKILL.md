@@ -2,7 +2,7 @@
 name: mcp-setup
 description: >
   Verify and troubleshoot Databricks authentication for MCP server connections
-  (Slack via uc-mcp-proxy and Genie via managed MCP endpoint).
+  (Slack and Genie both use uc-mcp-proxy with databricks-cli OAuth).
   Use this when MCP tools are not appearing, returning auth errors, or when
   the uc-mcp-proxy is not installed.
 user-invocable: true
@@ -11,11 +11,11 @@ allowed-tools: Bash, Read
 
 # MCP Setup
 
-Verify that Databricks authentication and MCP servers are configured correctly for both Slack (uc-mcp-proxy) and Genie (managed MCP endpoint) connections.
+Verify that Databricks authentication and MCP servers are configured correctly for both Slack and Genie connections. Both use `uc-mcp-proxy --auth-type databricks-cli` for dynamic OAuth — no static Bearer tokens required.
 
 ## Execution
 
-1. Check if uc-mcp-proxy is available via uvx (required for Slack MCP):
+1. Check if uc-mcp-proxy is available via uvx (required for both Slack and Genie MCP):
    ```bash
    uvx uc-mcp-proxy --help && echo "OK: uc-mcp-proxy available" || echo "MISSING: uc-mcp-proxy not found"
    ```
@@ -25,14 +25,13 @@ Verify that Databricks authentication and MCP servers are configured correctly f
    databricks auth env 2>&1
    ```
 
-3. Check if `DATABRICKS_HOST` and `DATABRICKS_TOKEN` env vars are set (required for Genie MCP):
+3. Check if `DATABRICKS_HOST` env var is set (required for Genie MCP URL):
    ```bash
    [ -n "${DATABRICKS_HOST:-}" ] && echo "OK: DATABRICKS_HOST=${DATABRICKS_HOST}" || echo "MISSING: DATABRICKS_HOST not set"
-   [ -n "${DATABRICKS_TOKEN:-}" ] && echo "OK: DATABRICKS_TOKEN is set" || echo "MISSING: DATABRICKS_TOKEN not set"
    ```
 
 4. Based on findings, guide the user:
-   - **Proxy missing** (Slack MCP): Install uc-mcp-proxy:
+   - **Proxy missing** (Slack or Genie MCP): Install uc-mcp-proxy:
      ```bash
      uv tool install uc-mcp-proxy
      ```
@@ -48,16 +47,15 @@ Verify that Databricks authentication and MCP servers are configured correctly f
      ```bash
      export DATABRICKS_CONFIG_PROFILE=my-profile
      ```
-   - **DATABRICKS_HOST/TOKEN missing** (Genie MCP): Run the inference configuration script to set these:
+   - **DATABRICKS_HOST missing** (Genie MCP): Run the inference configuration script to set it:
      ```bash
      bash scripts/configure-inference.sh
      ```
-     Or set them manually in `~/.claude/settings.json` under the `env` key:
+     Or set it manually in `~/.claude/settings.json` under the `env` key:
      ```json
      {
        "env": {
-         "DATABRICKS_HOST": "https://your-workspace.cloud.databricks.com",
-         "DATABRICKS_TOKEN": "your-token"
+         "DATABRICKS_HOST": "https://your-workspace.cloud.databricks.com"
        }
      }
      ```

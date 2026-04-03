@@ -61,19 +61,25 @@ Add to `plugins/databricks-mcp/.mcp.json` under `mcpServers`:
 
 ```json
 "<name>-mcp": {
-  "type": "http",
-  "url": "${DATABRICKS_HOST}/api/2.0/mcp/<type>/<resource-path>",
-  "headers": {
-    "Authorization": "Bearer ${DATABRICKS_TOKEN}"
-  }
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+    "uc-mcp-proxy",
+    "--url", "${DATABRICKS_HOST}/api/2.0/mcp/<type>/<resource-path>",
+    "--auth-type", "databricks-cli",
+    "--profile", "${DATABRICKS_CONFIG_PROFILE:-DEFAULT}"
+  ]
 }
 ```
 
 ### Auth
 
-`DATABRICKS_HOST` and `DATABRICKS_TOKEN` are set by `scripts/configure-inference.sh` (written to `~/.claude/settings.json` under the `env` key). No additional auth setup needed.
+Uses Databricks CLI OAuth via `uc-mcp-proxy` — tokens auto-refresh, no static PAT required. Requires:
+- `uc-mcp-proxy` installed: `uv tool install uc-mcp-proxy`
+- Databricks CLI auth configured: `databricks auth login`
+- `DATABRICKS_HOST` set in `~/.claude/settings.json` under the `env` key (set by `scripts/configure-inference.sh`)
 
-**Always use `"type": "http"`** — not `"sse"`. Databricks managed MCP endpoints use streamable HTTP transport.
+`uc-mcp-proxy` works with all Databricks MCP types: managed endpoints, external connections, and Databricks Apps.
 
 ### Live Example
 
@@ -81,11 +87,14 @@ The existing `genie-mcp` entry in `plugins/databricks-mcp/.mcp.json`:
 
 ```json
 "genie-mcp": {
-  "type": "http",
-  "url": "${DATABRICKS_HOST}/api/2.0/mcp/genie/01f11733962d175c9ad16dc83db6e9af",
-  "headers": {
-    "Authorization": "Bearer ${DATABRICKS_TOKEN}"
-  }
+  "type": "stdio",
+  "command": "uvx",
+  "args": [
+    "uc-mcp-proxy",
+    "--url", "${DATABRICKS_HOST}/api/2.0/mcp/genie/01f11733962d175c9ad16dc83db6e9af",
+    "--auth-type", "databricks-cli",
+    "--profile", "${DATABRICKS_CONFIG_PROFILE:-DEFAULT}"
+  ]
 }
 ```
 
@@ -270,10 +279,6 @@ After adding any MCP server, complete this checklist:
 ### Missing trailing slash on uc-mcp-proxy App URLs
 - **Problem:** `uc-mcp-proxy` returns 404 or connection errors
 - **Fix:** The `--url` argument must end with `/mcp/` (trailing slash). Example: `https://my-app.databricksapps.com/mcp/`
-
-### Using uc-mcp-proxy for managed endpoints
-- **Problem:** Unnecessary complexity — extra dependency, slower startup
-- **Fix:** Managed endpoints (`/api/2.0/mcp/...`) accept PATs directly. Use `"type": "http"` with Bearer token auth. Only use `uc-mcp-proxy` for Databricks Apps that require OAuth.
 
 ### Forgetting version bumps or mcp-setup updates
 - **Problem:** Users on older versions don't get the new server. Troubleshooting skill doesn't cover the new server.

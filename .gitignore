@@ -8,6 +8,7 @@ CLAUDE.local.md
 *.egg-info/
 dist/
 !usage-limits/app/frontend/dist/
+tools/claude-db/claude-db
 **/build/output/
 .env
 .env.local

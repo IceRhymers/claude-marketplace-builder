@@ -202,9 +202,10 @@ auto_configure_otel() {
 
   # Check if Databricks credentials are already in settings.json
   if [ -f "$settings_file" ]; then
-    local db_host db_token
+    local db_host db_token db_profile
     db_host=$(jq -r '.env.DATABRICKS_HOST // empty' "$settings_file" 2>/dev/null) || db_host=""
     db_token=$(jq -r '.env.DATABRICKS_TOKEN // empty' "$settings_file" 2>/dev/null) || db_token=""
+    db_profile=$(jq -r '.env.DATABRICKS_CONFIG_PROFILE // empty' "$settings_file" 2>/dev/null) || db_profile=""
 
     if [ -n "$db_host" ] && [ -n "$db_token" ]; then
       echo ""

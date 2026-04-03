@@ -1,6 +1,6 @@
 {
   "name": "icerhymers-databricks-otel",
   "description": "OTEL telemetry configuration and diagnostics for Claude Code to Databricks",
-  "version": "2.0.0",
+  "version": "2.0.2",
   "author": { "name": "AI engineering" }
 }

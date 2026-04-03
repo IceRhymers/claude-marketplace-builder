@@ -11,11 +11,14 @@
       ]
     },
     "genie-mcp": {
-      "type": "http",
-      "url": "${DATABRICKS_HOST}/api/2.0/mcp/genie/${GENIE_SPACE_ID:-01f11733962d175c9ad16dc83db6e9af}",
-      "headers": {
-        "Authorization": "Bearer ${DATABRICKS_TOKEN}"
-      }
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "uc-mcp-proxy",
+        "--url", "${DATABRICKS_HOST}/api/2.0/mcp/genie/${GENIE_SPACE_ID:-01f11733962d175c9ad16dc83db6e9af}",
+        "--auth-type", "databricks-cli",
+        "--profile", "${DATABRICKS_CONFIG_PROFILE:-DEFAULT}"
+      ]
     }
   }
 }

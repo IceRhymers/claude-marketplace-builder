@@ -12,26 +12,29 @@ if [[ "${1:-}" == "--enforce" ]]; then
 fi
 
 BUDGET_API="${BUDGET_API_URL:-https://usage-limits-1444828305810485.aws.databricksapps.com}"
-PROFILE="${DATABRICKS_CLI_PROFILE:-DEFAULT}"
 
-# --- Get OAuth token via Databricks CLI ---
-if ! command -v databricks &>/dev/null; then
-  exit 0  # CLI not installed — fail open
-fi
+# --- Get token: env var (PAT) first, then CLI (OAuth) ---
+# Try DATABRICKS_TOKEN env var first (set from settings.json PAT)
+TOKEN="${DATABRICKS_TOKEN:-}"
 
-TOKEN_JSON=$(databricks auth token --profile "$PROFILE" 2>/dev/null) || true
-if [[ -z "$TOKEN_JSON" ]]; then
-  exit 0  # Token retrieval failed — fail open
-fi
-
-if command -v jq &>/dev/null; then
-  TOKEN=$(echo "$TOKEN_JSON" | jq -r '.access_token // empty' 2>/dev/null) || true
-else
-  TOKEN=$(python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" <<< "$TOKEN_JSON" 2>/dev/null) || true
+# Fall back to CLI auth if env var not available
+if [[ -z "$TOKEN" ]]; then
+  if ! command -v databricks &>/dev/null; then
+    exit 0  # CLI not installed — fail open
+  fi
+  PROFILE="${DATABRICKS_CONFIG_PROFILE:-${DATABRICKS_CLI_PROFILE:-DEFAULT}}"
+  TOKEN_JSON=$(databricks auth token --profile "$PROFILE" 2>/dev/null) || TOKEN_JSON=""
+  if [[ -n "$TOKEN_JSON" ]]; then
+    if command -v jq &>/dev/null; then
+      TOKEN=$(echo "$TOKEN_JSON" | jq -r '.access_token // empty' 2>/dev/null) || TOKEN=""
+    else
+      TOKEN=$(python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" <<< "$TOKEN_JSON" 2>/dev/null) || TOKEN=""
+    fi
+  fi
 fi
 
 if [[ -z "$TOKEN" ]]; then
-  exit 0  # Token parse failed — fail open
+  exit 0  # No credentials available — fail open
 fi
 
 # --- Call budget API ---

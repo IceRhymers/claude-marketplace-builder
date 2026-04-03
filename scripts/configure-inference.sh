@@ -33,15 +33,7 @@ INFERENCE_KEYS=(
   CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
   DATABRICKS_HOST
   DATABRICKS_TOKEN
-  ANTHROPIC_API_KEY
-  CLAUDE_CODE_USE_BEDROCK
-  AWS_REGION
-  AWS_ACCESS_KEY_ID
-  AWS_SECRET_ACCESS_KEY
-  AWS_PROFILE
-  CLAUDE_CODE_USE_VERTEX
-  CLOUD_ML_PROJECT_ID
-  CLOUD_ML_REGION
+  DATABRICKS_CONFIG_PROFILE
 )
 
 main() {
@@ -69,7 +61,7 @@ main() {
   check_prerequisites
 
   # -------------------------------------------------------------------------
-  # Banner & menu
+  # Banner
   # -------------------------------------------------------------------------
 
   clear_screen
@@ -79,34 +71,14 @@ main() {
   echo "  This configures ~/.claude/settings.json so Claude Code"
   echo "  picks up the backend automatically — no shell sourcing needed."
   echo ""
-  local choice
-  choice=$(select_menu "  Select a backend:" \
-    "Databricks AI Gateway  (recommended)" \
-    "Claude Max  (no configuration needed)" \
-    "Anthropic Direct API" \
-    "AWS Bedrock" \
-    "Google Vertex AI" \
-    "Custom endpoint")
-
-  # Claude Max needs no env vars — skip straight to confirmation
-  if [ "$choice" -eq 1 ]; then
-    configure_claude_max
-    return
-  fi
 
   # Temp file to collect KEY=VALUE pairs
   local env_file
   env_file=$(mktemp)
   trap "rm -f '$env_file'" EXIT
 
-  local profile_name
-  case "$choice" in
-    0) profile_name="databricks";  configure_databricks "$env_file" ;;
-    2) profile_name="anthropic";   configure_anthropic "$env_file" ;;
-    3) profile_name="bedrock";     configure_bedrock "$env_file" ;;
-    4) profile_name="vertex";      configure_vertex "$env_file" ;;
-    5) profile_name="custom";      configure_custom "$env_file" ;;
-  esac
+  local profile_name="databricks"
+  configure_databricks "$env_file"
 
   # -------------------------------------------------------------------------
   # Write to ~/.claude/settings.json
@@ -311,7 +283,7 @@ select_menu() {
 # ---------------------------------------------------------------------------
 # detect_databricks_profiles — Detect valid Databricks CLI profiles
 #
-# Prints a JSON array of valid profiles to stdout.
+# Prints a JSON array of valid PAT profiles to stdout.
 # Returns 0 if databricks CLI is found, 1 if not.
 # ---------------------------------------------------------------------------
 
@@ -327,10 +299,10 @@ detect_databricks_profiles() {
     return 0
   }
 
-  # Filter to valid profiles, extract name + host + auth_type
+  # Filter to valid PAT profiles, extract name + host + auth_type
   local filtered
   filtered=$(echo "$raw_profiles" | jq -c '
-    [.profiles // [] | .[] | select(.valid == true and .auth_type == "pat") | {name, host, auth_type}]
+    [.profiles // [] | .[] | select(.valid == true) | select(.auth_type == "pat") | {name, host, auth_type}]
   ' 2>/dev/null) || {
     echo "[]"
     return 0
@@ -368,7 +340,7 @@ resolve_workspace_id() {
 }
 
 # ---------------------------------------------------------------------------
-# Profile configurators — each writes KEY=VALUE lines to the env file
+# configure_databricks — Configure Databricks AI Gateway backend
 # ---------------------------------------------------------------------------
 
 configure_databricks() {
@@ -384,6 +356,7 @@ configure_databricks() {
   local use_manual=true
   local workspace_url=""
   local auth_token=""
+  local selected_profile_name=""
 
   # Try to detect Databricks CLI profiles
   local profiles_json cli_found
@@ -414,19 +387,19 @@ configure_databricks() {
 
     if [ "$profile_choice" -lt "$profile_count" ]; then
       # User selected a CLI profile
-      local selected_name="${profile_names[$profile_choice]}"
+      selected_profile_name="${profile_names[$profile_choice]}"
       local selected_host="${profile_hosts[$profile_choice]}"
 
       # Strip trailing slash from host
       selected_host="${selected_host%/}"
       workspace_url="$selected_host"
 
-      echo "  Using profile: $selected_name"
+      echo "  Using profile: $selected_profile_name"
       echo "  Host: $selected_host"
 
       # Try to get auth token from the CLI
       local env_json
-      env_json=$(databricks auth env --profile "$selected_name" --output json 2>/dev/null) || env_json=""
+      env_json=$(databricks auth env --profile "$selected_profile_name" --output json 2>/dev/null) || env_json=""
 
       if [ -n "$env_json" ]; then
         auth_token=$(echo "$env_json" | jq -r '.env.DATABRICKS_TOKEN // empty' 2>/dev/null) || auth_token=""
@@ -434,10 +407,10 @@ configure_databricks() {
 
       if [ -z "$auth_token" ]; then
         echo ""
-        echo "  WARNING: Could not retrieve token for profile '$selected_name'."
-        echo "  The token may be expired. Try: databricks auth login --profile $selected_name"
+        echo "  WARNING: Could not retrieve token for profile '$selected_profile_name'."
+        echo "  The token may be expired. Try: databricks auth login --profile $selected_profile_name"
         echo ""
-        auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
+        auth_token=$(prompt_secret "Databricks PAT (ANTHROPIC_AUTH_TOKEN)")
       fi
 
       use_manual=false
@@ -466,7 +439,7 @@ configure_databricks() {
     # Strip trailing slash
     workspace_url="${workspace_url%/}"
 
-    auth_token=$(prompt_secret "Databricks PAT or OAuth token (ANTHROPIC_AUTH_TOKEN)")
+    auth_token=$(prompt_secret "Databricks PAT (ANTHROPIC_AUTH_TOKEN)")
   fi
 
   # Resolve workspace ID via SCIM API
@@ -504,133 +477,17 @@ configure_databricks() {
     if [ -n "$auth_token" ]; then
       echo "DATABRICKS_TOKEN=${auth_token}"
     fi
-  } > "$env_file"
-}
-
-configure_anthropic() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  Anthropic Direct"
-  echo "  =========================================="
-  echo ""
-
-  local api_key
-  api_key=$(prompt_secret "Anthropic API key (ANTHROPIC_API_KEY)")
-
-  : > "$env_file"
-  if [ -n "$api_key" ]; then
-    echo "ANTHROPIC_API_KEY=${api_key}" > "$env_file"
-  fi
-}
-
-configure_bedrock() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  AWS Bedrock"
-  echo "  =========================================="
-  echo ""
-
-  local aws_region
-  aws_region=$(prompt_value "AWS region (e.g., us-east-1)" "us-east-1")
-
-  local auth_choice
-  auth_choice=$(select_menu "  Authentication method:" \
-    "AWS access key + secret key" \
-    "AWS CLI profile name" \
-    "Skip (use instance role, SSO, or env vars)")
-
-  {
-    echo "CLAUDE_CODE_USE_BEDROCK=1"
-    echo "AWS_REGION=${aws_region}"
-  } > "$env_file"
-
-  case "$auth_choice" in
-    0)
-      local aws_access_key aws_secret_key
-      aws_access_key=$(prompt_secret "AWS Access Key ID")
-      aws_secret_key=$(prompt_secret "AWS Secret Access Key")
-      [ -n "$aws_access_key" ] && echo "AWS_ACCESS_KEY_ID=${aws_access_key}" >> "$env_file"
-      [ -n "$aws_secret_key" ] && echo "AWS_SECRET_ACCESS_KEY=${aws_secret_key}" >> "$env_file"
-      ;;
-    1)
-      local aws_profile
-      aws_profile=$(prompt_value "AWS profile name" "default")
-      echo "AWS_PROFILE=${aws_profile}" >> "$env_file"
-      ;;
-  esac
-}
-
-configure_vertex() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  Google Vertex AI"
-  echo "  =========================================="
-  echo ""
-
-  local gcp_project
-  gcp_project=$(prompt_value "GCP Project ID" "")
-
-  if [ -z "$gcp_project" ]; then
-    echo "  ERROR: GCP Project ID is required."
-    exit 1
-  fi
-
-  local gcp_region
-  gcp_region=$(prompt_value "GCP region (e.g., us-east5)" "us-east5")
-
-  {
-    echo "CLAUDE_CODE_USE_VERTEX=1"
-    echo "CLOUD_ML_PROJECT_ID=${gcp_project}"
-    echo "CLOUD_ML_REGION=${gcp_region}"
-  } > "$env_file"
-
-  echo ""
-  echo "  Make sure you have authenticated with: gcloud auth application-default login"
-}
-
-configure_custom() {
-  local env_file="$1"
-
-  clear_screen
-  echo "  Custom Endpoint"
-  echo "  =========================================="
-  echo ""
-
-  local base_url
-  base_url=$(prompt_value "Custom base URL" "")
-
-  if [ -z "$base_url" ]; then
-    echo "  ERROR: Base URL is required."
-    exit 1
-  fi
-
-  local auth_token
-  auth_token=$(prompt_secret "Auth token (ANTHROPIC_AUTH_TOKEN)")
-
-  {
-    echo "ANTHROPIC_BASE_URL=${base_url}"
-    if [ -n "$auth_token" ]; then
-      echo "ANTHROPIC_AUTH_TOKEN=${auth_token}"
+    if [ -n "$selected_profile_name" ]; then
+      echo "DATABRICKS_CONFIG_PROFILE=${selected_profile_name}"
+    else
+      echo "DATABRICKS_CONFIG_PROFILE=DEFAULT"
     fi
   } > "$env_file"
-}
 
-configure_claude_max() {
-  clear_screen
-  echo "  Claude Max"
-  echo "  =========================================="
   echo ""
-  echo "  Claude Max includes inference — no additional configuration needed."
-  echo ""
-  echo "  Just make sure you're signed in:"
-  echo "    1. Run 'claude' in your terminal"
-  echo "    2. Sign in with your Anthropic account when prompted"
-  echo ""
-  echo "  That's it! Claude Code will use your Max subscription automatically."
-  echo ""
+  echo "  NOTE: MCP servers (Slack, Genie) and budget enforcement require Databricks CLI auth."
+  echo "  If you use these features, also run: databricks auth login --profile DEFAULT"
+  echo "  For automatic credential management, see claude-db: make install-claude-db"
 }
 
 # ---------------------------------------------------------------------------
