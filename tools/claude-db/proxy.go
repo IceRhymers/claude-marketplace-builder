@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -56,10 +58,12 @@ func NewProxyServer(config *ProxyConfig) http.Handler {
 				log.Printf("claude-db: token fetch error: %v", err)
 			}
 			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("x-api-key", token) // Anthropic SDK sends x-api-key; overwrite the "proxy-managed" placeholder
 			req.Header.Set("x-databricks-use-coding-agent-mode", "true")
 
 			req.URL.Scheme = inferenceUpstream.Scheme
 			req.URL.Host = inferenceUpstream.Host
+			req.Host = inferenceUpstream.Host // Override Host header — upstream rejects localhost
 			// Prepend the upstream base path to the incoming request path.
 			basePath := strings.TrimRight(inferenceUpstream.Path, "/")
 			req.URL.Path = basePath + req.URL.Path
@@ -68,6 +72,22 @@ func NewProxyServer(config *ProxyConfig) http.Handler {
 			if config.Verbose {
 				log.Printf("claude-db: inference → %s %s%s", req.Method, req.URL.Host, req.URL.Path)
 			}
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			if config.Verbose && resp.StatusCode >= 400 {
+				body, err := io.ReadAll(resp.Body)
+				if err == nil {
+					// Log first 500 chars of error response
+					snippet := string(body)
+					if len(snippet) > 500 {
+						snippet = snippet[:500] + "..."
+					}
+					log.Printf("claude-db: upstream error %d: %s", resp.StatusCode, snippet)
+					// Put the body back so the caller still gets it
+					resp.Body = io.NopCloser(bytes.NewReader(body))
+				}
+			}
+			return nil
 		},
 		FlushInterval: -1,
 	}
@@ -80,6 +100,7 @@ func NewProxyServer(config *ProxyConfig) http.Handler {
 				log.Printf("claude-db: token fetch error (otel): %v", err)
 			}
 			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("x-api-key", token)
 			req.Header.Set("X-Databricks-UC-Table-Name", config.UCTable)
 
 			// Strip the /otel prefix and prepend the upstream base path.
@@ -87,6 +108,7 @@ func NewProxyServer(config *ProxyConfig) http.Handler {
 			basePath := strings.TrimRight(otelUpstream.Path, "/")
 			req.URL.Scheme = otelUpstream.Scheme
 			req.URL.Host = otelUpstream.Host
+			req.Host = otelUpstream.Host
 			req.URL.Path = basePath + stripped
 			req.URL.RawPath = ""
 

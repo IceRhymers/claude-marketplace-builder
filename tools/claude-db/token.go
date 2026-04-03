@@ -170,6 +170,7 @@ func ConstructGatewayURL(host, token string) string {
 		log.Printf("workspace ID resolution failed, falling back to serving-endpoints: %v", err)
 		return host + "/serving-endpoints/anthropic"
 	}
-	log.Printf("resolved workspace ID %s, using AI Gateway URL", workspaceID)
-	return "https://" + workspaceID + ".ai-gateway.cloud.databricks.com/anthropic"
+	gatewayURL := "https://" + workspaceID + ".ai-gateway.cloud.databricks.com/anthropic"
+	log.Printf("resolved workspace ID %s, using AI Gateway URL: %s", workspaceID, gatewayURL)
+	return gatewayURL
 }

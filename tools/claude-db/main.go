@@ -17,7 +17,7 @@ func main() {
 	// Parse claude-db flags, passing everything else through to claude.
 	// Usage: claude-db [claude-db-flags] [--] [claude-args...]
 	// Unknown flags are forwarded to claude automatically.
-	profile, verbose, version, otel, otelTable, claudeArgs := parseArgs(os.Args[1:])
+	profile, verbose, version, otel, otelTable, upstream, claudeArgs := parseArgs(os.Args[1:])
 
 	if version {
 		fmt.Printf("claude-db %s\n", Version)
@@ -28,6 +28,21 @@ func main() {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatalf("claude-db: cannot determine home dir: %v", err)
+	}
+
+	// Set up file-based logging when verbose is enabled.
+	// Logs go to ~/.claude/logs/claude-db.log to avoid polluting the REPL.
+	if verbose {
+		logDir := filepath.Join(homeDir, ".claude", "logs")
+		if err := os.MkdirAll(logDir, 0o755); err == nil {
+			logPath := filepath.Join(logDir, "claude-db.log")
+			logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+			if err == nil {
+				log.SetOutput(logFile)
+				defer logFile.Close()
+				fmt.Fprintf(os.Stderr, "claude-db: logging to %s\n", logPath)
+			}
+		}
 	}
 	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
 
@@ -91,7 +106,19 @@ func main() {
 
 	// --- Self-setup: discover host + gateway URL if ANTHROPIC_BASE_URL is absent ---
 	needsFullSetup := false
-	if inferenceUpstream == "" {
+
+	// --upstream flag takes highest priority for the inference endpoint.
+	if upstream != "" {
+		inferenceUpstream = upstream
+		log.Printf("claude-db: using explicit upstream: %s", inferenceUpstream)
+		if databricksHost == "" {
+			// Try to discover host for OTEL even when upstream is explicit.
+			if h, err := DiscoverHost(resolvedProfile, ""); err == nil {
+				databricksHost = h
+			}
+		}
+		needsFullSetup = true
+	} else if inferenceUpstream == "" {
 		log.Printf("claude-db: no ANTHROPIC_BASE_URL configured — discovering from profile %q", resolvedProfile)
 
 		host, err := DiscoverHost(resolvedProfile, "")
@@ -207,7 +234,7 @@ func envBlock(doc map[string]interface{}) map[string]interface{} {
 // claude-db owns: --profile, --verbose, --version, --otel, --otel-table.
 // Everything else (including unknown flags like --debug) passes through to claude.
 // An explicit "--" separator is supported but not required.
-func parseArgs(args []string) (profile string, verbose bool, version bool, otel bool, otelTable string, claudeArgs []string) {
+func parseArgs(args []string) (profile string, verbose bool, version bool, otel bool, otelTable string, upstream string, claudeArgs []string) {
 	otelTable = "main.claude_telemetry.claude_otel_metrics" // default
 
 	knownFlags := map[string]bool{
@@ -216,6 +243,7 @@ func parseArgs(args []string) (profile string, verbose bool, version bool, otel 
 		"--version":    true,
 		"--otel":       true,
 		"--otel-table": true,
+		"--upstream":   true,
 	}
 
 	i := 0
@@ -253,6 +281,13 @@ func parseArgs(args []string) (profile string, verbose bool, version bool, otel 
 					} else if i+1 < len(args) {
 						i++
 						otelTable = args[i]
+					}
+				case "--upstream":
+					if value != "" {
+						upstream = value
+					} else if i+1 < len(args) {
+						i++
+						upstream = args[i]
 					}
 				case "--verbose":
 					verbose = true
