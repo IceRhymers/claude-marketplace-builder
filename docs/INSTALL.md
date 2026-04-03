@@ -21,7 +21,7 @@ This walks you through connecting Claude Code to one of:
 
 | Backend | Best for |
 |---------|----------|
-| **Databricks AI Gateway** | Teams using Databricks (auto-detects CLI profiles) |
+| **Databricks AI Gateway** | Teams using Databricks (auto-detects CLI profiles, supports OAuth + PAT) |
 | **Claude Max** | Individual subscribers — zero config needed |
 | **Anthropic Direct API** | Direct API key access |
 | **AWS Bedrock** | AWS-native deployments |
@@ -30,19 +30,27 @@ This walks you through connecting Claude Code to one of:
 
 The script writes to `~/.claude/settings.json` so Claude Code picks up the backend automatically — no shell sourcing needed. Re-run at any time to change backends.
 
+**OAuth vs PAT:** The Databricks profile now supports OAuth as the primary auth method (via `databricks auth login`). Personal Access Tokens (PATs) remain supported as a fallback for environments without Databricks CLI. If you use OAuth, the configure script can set up an automatic token refresh wrapper so tokens stay fresh across long sessions.
+
 ### Manual inference setup
 
-If you prefer not to use the interactive script, set env vars directly in your shell profile. Example for Databricks:
+If you prefer not to use the interactive script, set env vars directly in your shell profile. Example for Databricks using OAuth:
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
 export ANTHROPIC_BASE_URL="https://your-workspace.cloud.databricks.com/serving-endpoints/anthropic"
-export ANTHROPIC_AUTH_TOKEN="your-databricks-pat"
+export DATABRICKS_CONFIG_PROFILE="DEFAULT"   # profile from `databricks auth login`
+# ANTHROPIC_AUTH_TOKEN is populated by the token refresh wrapper when using OAuth
 export ANTHROPIC_DEFAULT_OPUS_MODEL="databricks-claude-opus-4-6"
 export ANTHROPIC_DEFAULT_SONNET_MODEL="databricks-claude-sonnet-4-5"
 export ANTHROPIC_DEFAULT_HAIKU_MODEL="databricks-claude-haiku-4-5"
 export ANTHROPIC_CUSTOM_HEADERS="x-databricks-use-coding-agent-mode: true"
 export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS="1"
+```
+
+For PAT-based auth (no Databricks CLI), replace the `DATABRICKS_CONFIG_PROFILE` line with:
+```bash
+export ANTHROPIC_AUTH_TOKEN="your-databricks-pat"
 ```
 
 For other backends, see the profile templates in `config/profiles/`.
@@ -99,6 +107,8 @@ This reads your Databricks credentials from `~/.claude/settings.json` (set durin
 **Why not a plugin hook?** OTEL env vars must be present before Claude Code starts — `SessionStart` hooks fire too late. The `settings.json` `env` block is loaded at process startup, which is the only mechanism that works.
 
 **Token rotation:** Re-run `configure-otel.sh` after updating your Databricks token to recompute the OTEL headers.
+
+**OTEL Token Lifetime:** OTEL metrics use an OAuth token that expires after ~1 hour. After expiry, metrics stop exporting silently. For complete telemetry coverage during long sessions, restart Claude Code approximately every hour. A future update may add mid-session token refresh.
 
 **Verify:** Use `/otel-status` inside Claude Code to check whether OTEL is configured correctly.
 

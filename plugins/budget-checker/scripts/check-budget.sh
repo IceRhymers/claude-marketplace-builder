@@ -12,7 +12,7 @@ if [[ "${1:-}" == "--enforce" ]]; then
 fi
 
 BUDGET_API="${BUDGET_API_URL:-https://usage-limits-1444828305810485.aws.databricksapps.com}"
-PROFILE="${DATABRICKS_CLI_PROFILE:-DEFAULT}"
+PROFILE="${DATABRICKS_CONFIG_PROFILE:-${DATABRICKS_CLI_PROFILE:-DEFAULT}}"
 
 # --- Get OAuth token via Databricks CLI ---
 if ! command -v databricks &>/dev/null; then

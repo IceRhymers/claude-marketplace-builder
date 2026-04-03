@@ -330,7 +330,7 @@ detect_databricks_profiles() {
   # Filter to valid profiles, extract name + host + auth_type
   local filtered
   filtered=$(echo "$raw_profiles" | jq -c '
-    [.profiles // [] | .[] | select(.valid == true and .auth_type == "pat") | {name, host, auth_type}]
+    [.profiles // [] | .[] | select(.valid == true) | {name, host, auth_type}]
   ' 2>/dev/null) || {
     echo "[]"
     return 0
@@ -384,6 +384,7 @@ configure_databricks() {
   local use_manual=true
   local workspace_url=""
   local auth_token=""
+  local selected_profile_name=""
 
   # Try to detect Databricks CLI profiles
   local profiles_json cli_found
@@ -416,6 +417,7 @@ configure_databricks() {
       # User selected a CLI profile
       local selected_name="${profile_names[$profile_choice]}"
       local selected_host="${profile_hosts[$profile_choice]}"
+      selected_profile_name="$selected_name"
 
       # Strip trailing slash from host
       selected_host="${selected_host%/}"
@@ -504,7 +506,223 @@ configure_databricks() {
     if [ -n "$auth_token" ]; then
       echo "DATABRICKS_TOKEN=${auth_token}"
     fi
+    if [ -n "$selected_profile_name" ]; then
+      echo "DATABRICKS_CONFIG_PROFILE=${selected_profile_name}"
+    fi
   } > "$env_file"
+
+  # -------------------------------------------------------------------------
+  # Offer token refresh method: proxy (recommended), shell wrapper, or skip
+  # -------------------------------------------------------------------------
+
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Token Refresh Method"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo ""
+  echo "  OAuth tokens expire after ~1 hour. Choose how to handle refresh:"
+  echo ""
+
+  local refresh_choice
+  refresh_choice=$(select_menu "  Token refresh method:" \
+    "claude-db proxy (recommended)  — Refreshes tokens per-request. Works for inference + OTEL." \
+    "Shell wrapper                  — Refreshes tokens at session start only." \
+    "Skip                           — Manual token management.")
+
+  case "$refresh_choice" in
+    0) install_claude_db_proxy "$selected_profile_name" ;;
+    1) install_token_refresh_wrapper ;;
+    2)
+      echo ""
+      echo "  Skipped. To configure manually later, run: make configure"
+      echo ""
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# install_claude_db_proxy — Install or guide the user to install claude-db
+# ---------------------------------------------------------------------------
+
+install_claude_db_proxy() {
+  local profile_name="${1:-}"
+  local bin_dir="$HOME/.claude/bin"
+  local bin_path="$bin_dir/claude-db"
+
+  echo ""
+  echo "  claude-db proxy"
+  echo ""
+
+  # Check if already installed
+  if [ -x "$bin_path" ]; then
+    echo "  claude-db is already installed at $bin_path"
+    echo ""
+    _claude_db_ensure_path "$bin_dir"
+    return
+  fi
+
+  # Try to build from source if Go is available and we're in the repo
+  if command -v go &>/dev/null && [ -d "tools/claude-db" ] && [ -f "tools/claude-db/go.mod" ]; then
+    echo "  Go toolchain found. Building claude-db from source..."
+    if make build-claude-db 2>/dev/null && make install-claude-db 2>/dev/null; then
+      echo ""
+      echo "  claude-db installed to $bin_path"
+      echo ""
+      _claude_db_ensure_path "$bin_dir"
+      return
+    else
+      echo "  WARNING: Build failed. Falling back to manual instructions."
+    fi
+  fi
+
+  # Fallback: print download instructions
+  echo "  claude-db is not installed. To install:"
+  echo ""
+  echo "  Option A — Build from source (requires Go 1.22+):"
+  echo "    git clone https://github.com/IceRhymers/claude-marketplace-builder"
+  echo "    cd claude-marketplace-builder"
+  echo "    make build-claude-db && make install-claude-db"
+  echo ""
+  echo "  Option B — Download pre-built binary:"
+  echo "    https://github.com/IceRhymers/claude-marketplace-builder/releases"
+  echo "    Copy the binary to: $bin_path"
+  echo "    chmod +x $bin_path"
+  echo ""
+  echo "  Then add to PATH:"
+  echo "    export PATH=\"$bin_dir:\$PATH\""
+  echo ""
+  echo "  Usage (drop-in replacement for 'claude'):"
+  if [ -n "$profile_name" ]; then
+    echo "    claude-db --profile $profile_name"
+  else
+    echo "    claude-db"
+  fi
+  echo ""
+}
+
+# _claude_db_ensure_path — Add ~/.claude/bin to PATH in the user's rc file if needed
+_claude_db_ensure_path() {
+  local bin_dir="$1"
+
+  # Detect shell rc file
+  local rc_file
+  local shell_name
+  shell_name="${SHELL##*/}"
+  case "$shell_name" in
+    zsh)  rc_file="$HOME/.zshrc" ;;
+    bash) rc_file="$HOME/.bashrc" ;;
+    *)    rc_file="$HOME/.bashrc" ;;
+  esac
+
+  # Skip if already in PATH or already in rc file
+  if echo "$PATH" | grep -qF "$bin_dir"; then
+    return
+  fi
+  if [ -f "$rc_file" ] && grep -qF "$bin_dir" "$rc_file" 2>/dev/null; then
+    return
+  fi
+
+  {
+    echo ""
+    echo "# claude-db proxy — add to PATH"
+    echo "export PATH=\"$bin_dir:\$PATH\""
+  } >> "$rc_file"
+
+  echo "  Added $bin_dir to PATH in $rc_file"
+  echo "  Run: source $rc_file"
+  echo ""
+}
+
+# ---------------------------------------------------------------------------
+# install_token_refresh_wrapper — Copy refresh script and patch shell rc file
+# ---------------------------------------------------------------------------
+
+install_token_refresh_wrapper() {
+  local scripts_dir="$HOME/.claude/scripts"
+  local target="$scripts_dir/refresh-databricks-token.sh"
+
+  # Locate the source refresh script (works both from repo and curl-pipe-bash)
+  local source_script=""
+  # Check relative to this script's location first
+  local this_dir
+  this_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || this_dir=""
+  if [ -n "$this_dir" ] && [ -f "$this_dir/refresh-databricks-token.sh" ]; then
+    source_script="$this_dir/refresh-databricks-token.sh"
+  fi
+
+  # Install the refresh script
+  mkdir -p "$scripts_dir"
+
+  if [ -n "$source_script" ]; then
+    cp "$source_script" "$target"
+  else
+    # Fallback: download from repo if running via curl-pipe-bash
+    if command -v curl &>/dev/null; then
+      curl -sSL \
+        "https://github.com/IceRhymers/claude-marketplace-builder/raw/main/scripts/refresh-databricks-token.sh" \
+        -o "$target" 2>/dev/null || {
+        echo ""
+        echo "  WARNING: Could not download refresh-databricks-token.sh."
+        echo "  Please copy it manually to: $target"
+        echo ""
+        return
+      }
+    else
+      echo ""
+      echo "  WARNING: Could not install refresh script (curl not available)."
+      echo "  Please copy scripts/refresh-databricks-token.sh to: $target"
+      echo ""
+      return
+    fi
+  fi
+
+  chmod +x "$target"
+
+  # Detect shell and rc file
+  local rc_file
+  local shell_name
+  shell_name="${SHELL##*/}"
+  case "$shell_name" in
+    zsh)  rc_file="$HOME/.zshrc" ;;
+    bash) rc_file="$HOME/.bashrc" ;;
+    *)    rc_file="$HOME/.bashrc" ;;
+  esac
+
+  # Back up rc file
+  if [ -f "$rc_file" ]; then
+    local backup="${rc_file}.bak.$(date +%Y%m%d)"
+    cp "$rc_file" "$backup"
+    echo "  Backed up: $backup"
+  fi
+
+  # Duplicate detection — skip if wrapper already present
+  if [ -f "$rc_file" ] && grep -q 'refresh-databricks-token.sh' "$rc_file" 2>/dev/null; then
+    echo ""
+    echo "  Token refresh wrapper already present in $rc_file — skipping."
+    echo ""
+    return
+  fi
+
+  # Append the claude() wrapper function
+  {
+    echo ""
+    echo "# Claude Code — automatic Databricks token refresh"
+    echo "claude() {"
+    echo "  if [ -x \"\$HOME/.claude/scripts/refresh-databricks-token.sh\" ]; then"
+    echo "    bash \"\$HOME/.claude/scripts/refresh-databricks-token.sh\" 2>/dev/null || true"
+    echo "  fi"
+    echo "  command claude \"\$@\""
+    echo "}"
+  } >> "$rc_file"
+
+  echo ""
+  echo "  Token refresh wrapper installed!"
+  echo "    Script:  $target"
+  echo "    Added to: $rc_file"
+  echo ""
+  echo "  Run the following to activate in your current session:"
+  echo "    source $rc_file"
+  echo ""
 }
 
 configure_anthropic() {
@@ -658,7 +876,7 @@ write_settings() {
     echo "  Backed up: $backup"
 
     local tmp
-    tmp=$(mktemp)
+    tmp=$(mktemp -p "$(dirname "$settings_file")")
     jq --argjson new_env "$env_json" '.env = ((.env // {}) + $new_env)' "$settings_file" > "$tmp"
     mv "$tmp" "$settings_file"
   else
@@ -702,7 +920,7 @@ remove_settings() {
 
   # Remove the keys
   local tmp
-  tmp=$(mktemp)
+  tmp=$(mktemp -p "$(dirname "$settings_file")")
   jq --argjson keys "$keys_json" '
     .env |= (if . then with_entries(select(.key as $k | $keys | index($k) | not)) else . end)
     | if .env == {} or .env == null then del(.env) else . end

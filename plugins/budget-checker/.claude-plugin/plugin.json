@@ -1,7 +1,7 @@
 {
   "name": "icerhymers-budget-checker",
   "description": "Blocks prompts when a user exceeds their Databricks AI Gateway token budget.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": {
     "name": "AI engineering"
   },

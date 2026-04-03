@@ -55,7 +55,7 @@ main() {
   local db_host="" db_token="" uc_table
   local use_manual=true
 
-  # Try to detect Databricks CLI profiles with PAT auth
+  # Try to detect Databricks CLI profiles
   local profiles_json cli_found
   profiles_json=$(detect_databricks_profiles) && cli_found=0 || cli_found=$?
 
@@ -114,7 +114,7 @@ main() {
     echo "  Databricks CLI not found — entering configuration manually."
     echo ""
   else
-    echo "  No valid Databricks CLI profiles with PAT auth found."
+    echo "  No valid Databricks CLI profiles found."
     echo "  Tip: run 'databricks auth login' to set up a profile."
     echo ""
   fi
@@ -296,9 +296,9 @@ select_menu() {
 }
 
 # ---------------------------------------------------------------------------
-# detect_databricks_profiles — Detect valid Databricks CLI profiles with PAT auth
+# detect_databricks_profiles — Detect valid Databricks CLI profiles
 #
-# Prints a JSON array of valid PAT profiles to stdout.
+# Prints a JSON array of valid profiles to stdout.
 # Returns 0 if databricks CLI is found, 1 if not.
 # ---------------------------------------------------------------------------
 
@@ -316,7 +316,7 @@ detect_databricks_profiles() {
 
   local filtered
   filtered=$(echo "$raw_profiles" | jq -c '
-    [.profiles // [] | .[] | select(.valid == true and .auth_type == "pat") | {name, host, auth_type}]
+    [.profiles // [] | .[] | select(.valid == true) | {name, host, auth_type}]
   ' 2>/dev/null) || {
     echo "[]"
     return 0
@@ -396,7 +396,7 @@ write_settings() {
 
   if [ -f "$settings_file" ]; then
     local tmp
-    tmp=$(mktemp)
+    tmp=$(mktemp -p "$(dirname "$settings_file")")
     jq --argjson new_env "$env_json" '.env = ((.env // {}) + $new_env)' "$settings_file" > "$tmp"
     mv "$tmp" "$settings_file"
   else
@@ -440,7 +440,7 @@ remove_settings() {
 
   # Remove the keys
   local tmp
-  tmp=$(mktemp)
+  tmp=$(mktemp -p "$(dirname "$settings_file")")
   jq --argjson keys "$keys_json" '
     .env |= (if . then with_entries(select(.key as $k | $keys | index($k) | not)) else . end)
     | if .env == {} or .env == null then del(.env) else . end
