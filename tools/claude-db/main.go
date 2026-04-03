@@ -3,25 +3,23 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
 func main() {
-	profile := flag.String("profile", "", "Databricks CLI profile (default: from settings.json or DEFAULT)")
-	verbose := flag.Bool("verbose", false, "Enable verbose logging")
-	version := flag.Bool("version", false, "Print version and exit")
-	otel := flag.Bool("otel", false, "Enable OTEL telemetry proxying")
-	otelTable := flag.String("otel-table", "main.claude_telemetry.claude_otel_metrics", "Unity Catalog table for OTEL metrics")
-	flag.Parse()
+	// Parse claude-db flags, passing everything else through to claude.
+	// Usage: claude-db [claude-db-flags] [--] [claude-args...]
+	// Unknown flags are forwarded to claude automatically.
+	profile, verbose, version, otel, otelTable, claudeArgs := parseArgs(os.Args[1:])
 
-	if *version {
+	if version {
 		fmt.Printf("claude-db %s\n", Version)
 		os.Exit(0)
 	}
@@ -41,7 +39,7 @@ func main() {
 	env := envBlock(settingsDoc)
 
 	// Resolve profile: CLI flag > env var > settings.json > DEFAULT
-	resolvedProfile := *profile
+	resolvedProfile := profile
 	if resolvedProfile == "" {
 		resolvedProfile = os.Getenv("DATABRICKS_CONFIG_PROFILE")
 	}
@@ -122,7 +120,7 @@ func main() {
 
 	// OTEL table: --otel-table flag overrides settings.json value.
 	if ucTable == "" {
-		ucTable = *otelTable
+		ucTable = otelTable
 	}
 
 	// --- Start proxy ---
@@ -131,7 +129,7 @@ func main() {
 		OTELUpstream:      otelUpstream,
 		UCTable:           ucTable,
 		TokenProvider:     tp,
-		Verbose:           *verbose,
+		Verbose:           verbose,
 	}
 	handler := NewProxyServer(proxyConfig)
 	listener, err := StartProxy(handler)
@@ -142,7 +140,7 @@ func main() {
 
 	// --- Patch settings.json ---
 	sm := NewSettingsManager(settingsPath)
-	otelEnabled := *otel || otelConfigured
+	otelEnabled := otel || otelConfigured
 	if needsFullSetup {
 		if err := sm.FullSetup(FullSetupConfig{
 			ProxyURL:    proxyURL,
@@ -151,7 +149,7 @@ func main() {
 			Profile:     resolvedProfile,
 			UpstreamURL: inferenceUpstream,
 			OTELEnabled: otelEnabled,
-			OTELTable:   *otelTable,
+			OTELTable:   otelTable,
 		}); err != nil {
 			log.Fatalf("claude-db: failed to write settings.json: %v", err)
 		}
@@ -173,7 +171,7 @@ func main() {
 		listener.Addr().String(), resolvedProfile, inferenceUpstream)
 
 	// --- Run child ---
-	exitCode, err := RunChild(context.Background(), flag.Args())
+	exitCode, err := RunChild(context.Background(), claudeArgs)
 	if err != nil {
 		log.Printf("claude-db: child error: %v", err)
 	}
@@ -203,4 +201,74 @@ func envBlock(doc map[string]interface{}) map[string]interface{} {
 		}
 	}
 	return map[string]interface{}{}
+}
+
+// parseArgs separates claude-db flags from claude flags.
+// claude-db owns: --profile, --verbose, --version, --otel, --otel-table.
+// Everything else (including unknown flags like --debug) passes through to claude.
+// An explicit "--" separator is supported but not required.
+func parseArgs(args []string) (profile string, verbose bool, version bool, otel bool, otelTable string, claudeArgs []string) {
+	otelTable = "main.claude_telemetry.claude_otel_metrics" // default
+
+	knownFlags := map[string]bool{
+		"--profile":    true,
+		"--verbose":    true,
+		"--version":    true,
+		"--otel":       true,
+		"--otel-table": true,
+	}
+
+	i := 0
+	for i < len(args) {
+		arg := args[i]
+
+		// Explicit separator: everything after "--" goes to claude.
+		if arg == "--" {
+			claudeArgs = append(claudeArgs, args[i+1:]...)
+			return
+		}
+
+		// Check if it's a known claude-db flag.
+		if strings.HasPrefix(arg, "--") {
+			// Handle --flag=value form.
+			name := arg
+			value := ""
+			if eqIdx := strings.Index(arg, "="); eqIdx >= 0 {
+				name = arg[:eqIdx]
+				value = arg[eqIdx+1:]
+			}
+
+			if knownFlags[name] {
+				switch name {
+				case "--profile":
+					if value != "" {
+						profile = value
+					} else if i+1 < len(args) {
+						i++
+						profile = args[i]
+					}
+				case "--otel-table":
+					if value != "" {
+						otelTable = value
+					} else if i+1 < len(args) {
+						i++
+						otelTable = args[i]
+					}
+				case "--verbose":
+					verbose = true
+				case "--version":
+					version = true
+				case "--otel":
+					otel = true
+				}
+				i++
+				continue
+			}
+		}
+
+		// Not a known claude-db flag — pass through to claude.
+		claudeArgs = append(claudeArgs, arg)
+		i++
+	}
+	return
 }
