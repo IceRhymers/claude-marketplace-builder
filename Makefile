@@ -51,15 +51,15 @@ help:
 
 ## Check eval coverage via cme (fast, no API keys)
 cme-coverage:
-	uvx claude-marketplace-evaluator routing --plugins-dir plugins/ --coverage-threshold 100
+	uvx --from claude-marketplace-evaluator cme routing --plugins-dir plugins/ --coverage-threshold 100
 
 ## Check skill overlap via cme (fast, no API keys)
 cme-overlap:
-	uvx claude-marketplace-evaluator overlap --plugins-dir plugins/
+	uvx --from claude-marketplace-evaluator cme overlap --plugins-dir plugins/
 
 ## Run full cme routing evals with configurable pass-rate threshold
 cme-routing:
-	uvx claude-marketplace-evaluator routing --plugins-dir plugins/ --coverage-threshold 100 --threshold $(THRESHOLD)
+	uvx --from claude-marketplace-evaluator cme routing --plugins-dir plugins/ --coverage-threshold 100 --threshold $(THRESHOLD)
 
 ## Validate skill structure and frontmatter
 validate:
