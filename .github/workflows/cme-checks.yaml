@@ -34,11 +34,24 @@ jobs:
       - uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f  # v4
       - name: Check skill overlap
         env:
-            ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-            ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
-            ANTHROPIC_BASE_URL: ${{ secrets.DATABRICKS_AI_GATEWAY_URL }}
-            ANTHROPIC_MODEL: ${{ secrets.DATABRICKS_AI_GATEWAY_MODEL }}
-            ANTHROPIC_CUSTOM_HEADERS: "x-databricks-use-coding-agent-mode: true"
-            CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
-            CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
-        run: uvx --from claude-marketplace-evaluator cme overlap --plugins-dir plugins/
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ secrets.DATABRICKS_AI_GATEWAY_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.DATABRICKS_AI_GATEWAY_MODEL }}
+          ANTHROPIC_CUSTOM_HEADERS: "x-databricks-use-coding-agent-mode: true"
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
+          CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
+        run: |
+          set +e
+          uvx --from claude-marketplace-evaluator cme overlap --plugins-dir plugins/ --output overlap-report.json
+          EXIT_CODE=$?
+          if [ -f overlap-report.json ]; then
+            echo "## Overlap Report" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat overlap-report.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "--- overlap-report.json ---"
+            cat overlap-report.json
+            echo "---------------------------"
+          fi
+          exit $EXIT_CODE
