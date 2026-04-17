@@ -23,7 +23,7 @@ FILTER    ?=           ## Eval name filter substring (default: none)
 PLUGIN    ?=           ## Plugin name for scoped evals, e.g. PLUGIN=databricks-skills (default: all)
 WORKERS   ?= 8         ## Parallel eval workers (default: 8)
 TIMEOUT   ?= 180       ## Per-test timeout in seconds (default: 180)
-THRESHOLD ?= 95        ## Minimum pass percentage (default: 95)
+THRESHOLD ?= 95        ## Minimum pass percentage (default: 95; also used by cme-routing)
 RETRIES   ?= 5         ## Max retries on rate limit (default: 5)
 
 # Auto-source inference config if it exists
@@ -49,6 +49,18 @@ help:
 	@echo "Variables (override with VAR=value):"
 	@awk '/^[A-Z_]+ +\?=/{split($$0,a,"## "); gsub(/\?=.*/, "", $$1); printf "  %-20s %s\n", $$1, a[2]}' $(MAKEFILE_LIST)
 
+## Check eval coverage via cme (fast, no API keys)
+cme-coverage:
+	uvx claude-marketplace-evaluator routing --plugins-dir plugins/ --coverage-threshold 100
+
+## Check skill overlap via cme (fast, no API keys)
+cme-overlap:
+	uvx claude-marketplace-evaluator overlap --plugins-dir plugins/
+
+## Run full cme routing evals with configurable pass-rate threshold
+cme-routing:
+	uvx claude-marketplace-evaluator routing --plugins-dir plugins/ --coverage-threshold 100 --threshold $(THRESHOLD)
+
 ## Validate skill structure and frontmatter
 validate:
 ifeq ($(SKILL),)
@@ -57,6 +69,7 @@ else
 	bash scripts/validate-skill.sh $(SKILL)
 endif
 
+## DEPRECATED: use cme-* targets instead
 ## Run skill routing evals (uses all.yaml by default; set PLUGIN=<name> to scope to one plugin)
 ## NOTE: Run 'make evals-generate' first if you have modified any evals/evals.json files.
 evals:
@@ -80,12 +93,14 @@ else
 		$(if $(FILTER),--filter $(FILTER))
 endif
 
+## DEPRECATED: use cme-* targets instead
 ## Generate routing test YAMLs from per-skill evals/evals.json files
 evals-generate:
 	python3 evals/scripts/generate-routing-tests.py \
 		--plugins-dir plugins/ \
 		--out-dir evals/test-cases/
 
+## DEPRECATED: use cme-* targets instead
 ## Check that generated routing test YAMLs are up-to-date (used in CI)
 evals-check-generated:
 	@tmpdir=$$(mktemp -d) && \
@@ -100,6 +115,7 @@ evals-check-generated:
 		echo "OK: Generated routing YAMLs are up-to-date."; \
 	fi
 
+## DEPRECATED: use cme-* targets instead
 ## Install eval Python dependencies
 evals-install:
 	cd evals && uv sync
@@ -164,7 +180,8 @@ test-app-unit:
 test-app-integration:
 	cd $(APP)/app && uv run pytest tests/ -m integration -v
 
-.PHONY: help validate evals evals-generate evals-check-generated evals-install \
+.PHONY: help validate cme-coverage cme-overlap cme-routing \
+	evals evals-generate evals-check-generated evals-install \
 	install-local uninstall-local init configure configure-otel \
 	unconfigure unconfigure-otel \
 	app-install test-app test-app-coverage test-app-unit test-app-integration
