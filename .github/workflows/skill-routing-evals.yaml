@@ -1,10 +1,6 @@
 name: Skill Routing Evals
 
 on:
-  pull_request:
-    paths:
-      - "plugins/**/SKILL.md"
-      - "evals/**"
   workflow_dispatch:
     inputs:
       base_url:

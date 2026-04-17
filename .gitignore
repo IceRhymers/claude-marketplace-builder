@@ -19,3 +19,4 @@ evals/.venv/
 .claude/skills/staging/
 .mcp.json
 .coverage
+.omc/
