@@ -24,7 +24,7 @@ jobs:
           ANTHROPIC_CUSTOM_HEADERS: "x-databricks-use-coding-agent-mode: true"
           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
           CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
-        run: uvx --from claude-marketplace-evaluator cme routing --plugins-dir plugins/ --coverage-threshold 100 --threshold 95
+        run: uvx --from claude-marketplace-evaluator cme routing --plugins-dir plugins/ --coverage-threshold 100 --threshold 95 --timeout 180
 
   overlap:
     runs-on: ubuntu-latest
