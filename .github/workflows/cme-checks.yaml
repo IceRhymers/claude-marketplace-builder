@@ -5,7 +5,14 @@ on:
     paths:
       - "plugins/**"
       - "evals/**"
+      - ".github/workflows/cme-checks.yaml"
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday 09:00 UTC
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   coverage:
@@ -31,8 +38,69 @@ jobs:
     environment: cicd
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        with:
+          fetch-depth: 0
+
       - uses: astral-sh/setup-uv@e4db8464a088ece1b920f60402e813ea4de65b8f  # v4
-      - name: Check skill overlap
+
+      - name: Detect new skills
+        id: detect
+        if: github.event_name == 'pull_request'
+        run: |
+          NEW_SKILLS=""
+          for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'plugins/**/SKILL.md'); do
+            SKILL_DIR=$(dirname "$f")
+            if ! git cat-file -e "origin/${{ github.base_ref }}:$f" 2>/dev/null; then
+              NEW_SKILLS="${NEW_SKILLS} --new-skill ${SKILL_DIR}"
+            fi
+          done
+          echo "args=${NEW_SKILLS}" >> "$GITHUB_OUTPUT"
+          if [ -z "$NEW_SKILLS" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No new SKILL.md files detected — skipping overlap check."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "New skills detected:${NEW_SKILLS}"
+          fi
+
+      - name: Run overlap check (PR-aware)
+        if: github.event_name == 'pull_request' && steps.detect.outputs.skip != 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ secrets.DATABRICKS_AI_GATEWAY_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.DATABRICKS_AI_GATEWAY_MODEL }}
+          ANTHROPIC_CUSTOM_HEADERS: "x-databricks-use-coding-agent-mode: true"
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
+          CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          uvx --from claude-marketplace-evaluator \
+            cme overlap \
+            --plugins-dir plugins/ \
+            ${{ steps.detect.outputs.args }} \
+            --format github \
+            --output overlap-report.json > /tmp/pr-comment.md
+          EXIT_CODE=$?
+
+          [ -s overlap-report.json ] || { echo "ERROR: overlap-report.json missing or empty"; exit 1; }
+
+          echo "## Overlap Report" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat overlap-report.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body-file /tmp/pr-comment.md \
+            --edit-last 2>/dev/null \
+            || gh pr comment "${{ github.event.pull_request.number }}" \
+              --body-file /tmp/pr-comment.md
+
+          exit $EXIT_CODE
+
+      - name: Run overlap check (full scan — scheduled)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
@@ -43,15 +111,17 @@ jobs:
           CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
         run: |
           set +e
-          uvx --from claude-marketplace-evaluator cme overlap --plugins-dir plugins/ --output overlap-report.json
+          uvx --from claude-marketplace-evaluator \
+            cme overlap \
+            --plugins-dir plugins/ \
+            --output overlap-report.json
           EXIT_CODE=$?
+
           if [ -f overlap-report.json ]; then
-            echo "## Overlap Report" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Full Catalog Overlap Report" >> "$GITHUB_STEP_SUMMARY"
             echo '```json' >> "$GITHUB_STEP_SUMMARY"
             cat overlap-report.json >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
-            echo "--- overlap-report.json ---"
-            cat overlap-report.json
-            echo "---------------------------"
           fi
+
           exit $EXIT_CODE
