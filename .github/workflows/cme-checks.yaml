@@ -6,8 +6,6 @@ on:
       - "plugins/**"
       - "evals/**"
       - ".github/workflows/cme-checks.yaml"
-  schedule:
-    - cron: '0 9 * * 1'  # Every Monday 09:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -45,7 +43,6 @@ jobs:
 
       - name: Detect new skills
         id: detect
-        if: github.event_name == 'pull_request'
         run: |
           NEW_SKILLS=""
           for f in $(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'plugins/**/SKILL.md'); do
@@ -64,7 +61,7 @@ jobs:
           fi
 
       - name: Run overlap check (PR-aware)
-        if: github.event_name == 'pull_request' && steps.detect.outputs.skip != 'true'
+        if: steps.detect.outputs.skip != 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
@@ -96,32 +93,5 @@ jobs:
             --edit-last 2>/dev/null \
             || gh pr comment "${{ github.event.pull_request.number }}" \
               --body-file /tmp/pr-comment.md
-
-          exit $EXIT_CODE
-
-      - name: Run overlap check (full scan — scheduled)
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_AUTH_TOKEN: ${{ secrets.DATABRICKS_SP_TOKEN }}
-          ANTHROPIC_BASE_URL: ${{ secrets.DATABRICKS_AI_GATEWAY_URL }}
-          ANTHROPIC_MODEL: ${{ secrets.DATABRICKS_AI_GATEWAY_MODEL }}
-          ANTHROPIC_CUSTOM_HEADERS: "x-databricks-use-coding-agent-mode: true"
-          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
-          CLAUDE_CODE_ENABLE_FINE_GRAINED_TOOL_STREAMING: ""
-        run: |
-          set +e
-          uvx --from claude-marketplace-evaluator \
-            cme overlap \
-            --plugins-dir plugins/ \
-            --output overlap-report.json
-          EXIT_CODE=$?
-
-          if [ -f overlap-report.json ]; then
-            echo "## Full Catalog Overlap Report" >> "$GITHUB_STEP_SUMMARY"
-            echo '```json' >> "$GITHUB_STEP_SUMMARY"
-            cat overlap-report.json >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
 
           exit $EXIT_CODE
