@@ -1,0 +1,23 @@
+{
+  "name": "icerhymers-destructive-guard",
+  "description": "Pre-execution guardrail for Bash. Blocks unambiguous catastrophes (rm -rf /, force-push to main, terraform destroy, curl|sh, DROP DATABASE, secret exfil) using a tunable bash-only ruleset. Zero network. Fails open.",
+  "version": "0.1.0",
+  "author": {
+    "name": "AI engineering"
+  },
+  "skills": "./skills/",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guard.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
