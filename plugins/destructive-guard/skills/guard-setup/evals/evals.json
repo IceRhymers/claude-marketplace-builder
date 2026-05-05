@@ -1,0 +1,9 @@
+[
+  {"query": "why did the guard block my rm command?", "should_trigger": true},
+  {"query": "how do I add a new rule to the destructive guard?", "should_trigger": true},
+  {"query": "the guard is blocking a command I need, how do I bypass it?", "should_trigger": true},
+  {"query": "how do I check what commands have been blocked?", "should_trigger": true},
+  {"query": "how do I change the protected branches in the guard?", "should_trigger": true},
+  {"query": "set up a new Databricks workspace", "should_trigger": false},
+  {"query": "run my test suite", "should_trigger": false}
+]
