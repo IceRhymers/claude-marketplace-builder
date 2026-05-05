@@ -106,6 +106,7 @@ FILES_TO_REPLACE=(
   "plugins/databricks-mcp/skills/mcp-setup/SKILL.md"
   "plugins/databricks-otel/.claude-plugin/plugin.json"
   "plugins/budget-checker/.claude-plugin/plugin.json"
+  "plugins/destructive-guard/.claude-plugin/plugin.json"
   "scripts/install.sh"
   "scripts/update.sh"
   "docs/INSTALL.md"
