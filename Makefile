@@ -12,7 +12,8 @@ PLUGINS := \
 	icerhymers-specialized-tools \
 	icerhymers-databricks-mcp \
 	icerhymers-databricks-otel \
-	icerhymers-budget-checker
+	icerhymers-budget-checker \
+	icerhymers-destructive-guard
 
 MARKETPLACE := icerhymers-marketplace
 

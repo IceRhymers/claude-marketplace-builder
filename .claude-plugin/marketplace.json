@@ -78,6 +78,16 @@
         "name": "AI engineering"
       },
       "category": "enterprise"
+    },
+    {
+      "name": "icerhymers-destructive-guard",
+      "source": "./plugins/destructive-guard",
+      "description": "PreToolUse hook blocking destructive Bash commands with a tunable ruleset",
+      "version": "0.1.0",
+      "author": {
+        "name": "AI engineering"
+      },
+      "category": "safety"
     }
   ]
 }
